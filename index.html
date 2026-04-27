@@ -453,10 +453,15 @@ function buildTerrain(lat,lng){
 
 // ── Simulation ────────────────────────
 function runSim(terrain,params,seed=31337){
-  const{windDeg,windSpd,moist:xm,ignPts}=params;
+  const{windDeg,windSpd,moist:xm,ignPts,initGrid}=params;
   const wRad=((windDeg+180)%360)*Math.PI/180;const rng=mkRNG(seed);
-  let g=terrain.grid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28),fire:F.NONE,tick:0})));
-  for(const{gx,gy}of ignPts){for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(dx*dx+dy*dy>4)continue;const nx=gx+dx,ny=gy+dy;if(g[ny]?.[nx]&&g[ny][nx].type!==T.WATER)g[ny][nx]={...g[ny][nx],fire:F.FLAME,tick:0};}}
+  let g;
+  if(initGrid){
+    g=initGrid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28)})));
+  }else{
+    g=terrain.grid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28),fire:F.NONE,tick:0})));
+    for(const{gx,gy}of(ignPts||[{gx:G>>1,gy:G>>1}])){for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(dx*dx+dy*dy>4)continue;const nx=gx+dx,ny=gy+dy;if(g[ny]?.[nx]&&g[ny][nx].type!==T.WATER)g[ny][nx]={...g[ny][nx],fire:F.FLAME,tick:0};}}
+  }
   const snaps=[g.map(r=>r.map(c=>({...c})))];
   for(let step=0;step<STP-1;step++){
     const ng=g.map(r=>r.map(c=>({...c})));
@@ -634,7 +639,7 @@ function setupLayers(){const m=S.map;
   S.liveLayers.perims=L.esri.featureLayer({url:NIFC_P,simplifyFactor:.3,style:()=>({color:'#FFEB3B',weight:1.5,fillColor:'#FFEB3B',fillOpacity:.15}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<b>${p.poly_IncidentName||p.IncidentName||'Unknown'}</b><br><small>~${Math.round(p.poly_GISAcres||p.GISAcres||0).toLocaleString()} acres</small>`);}});
   S.liveLayers.perims.on('load',()=>{$('s0').className='sdot';chip('c-data','🌐 Live · NIFC','ok');});
   S.liveLayers.perims.on('requesterror',()=>{$('s0').className='sdot e';S.liveLayers.perims2=L.esri.featureLayer({url:NIFC_P2,simplifyFactor:.3,style:()=>({color:'#FFEB3B',weight:1.5,fillOpacity:.15})});if(S.vis.perims)S.liveLayers.perims2.addTo(m);});
-  S.liveLayers.incs=L.esri.featureLayer({url:NIFC_I,pointToLayer:(gj,ll)=>{const sz=gj.properties.IncidentSize||0,rad=Math.max(5,Math.min(20,5+Math.log10(Math.max(1,sz))*2.5));return L.circleMarker(ll,{radius:rad,color:'#FF1744',weight:2,fillColor:'#FF6D00',fillOpacity:.45});},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<b>${p.IncidentName||'Unknown'}</b><br><small>${Math.round(p.IncidentSize||0).toLocaleString()} acres${p.PercentContained!=null?` · ${p.PercentContained}% cont.`:''}</small>`);}});
+  S.liveLayers.incs=L.esri.featureLayer({url:NIFC_I,pointToLayer:(gj,ll)=>{const sz=gj.properties.IncidentSize||0,rad=Math.max(5,Math.min(20,5+Math.log10(Math.max(1,sz))*2.5));return L.circleMarker(ll,{radius:rad,color:'#FF1744',weight:2,fillColor:'#FF6D00',fillOpacity:.45});},onEachFeature:(f,l)=>{const p=f.properties||{};const nm=p.IncidentName||'Unknown';const ac=Math.round(p.IncidentSize||0);const cnt=p.PercentContained;l.bindPopup(`<b>${nm}</b><br><small>${ac.toLocaleString()} acres${cnt!=null?` · ${cnt}% cont.`:''}</small><br><button onclick="autoProject(${l.getLatLng().lat},${l.getLatLng().lng},'${nm.replace(/'/g,"\\'")}',${ac})" style="margin-top:8px;padding:5px 12px;background:#FF6D00;color:#fff;border:none;border-radius:6px;font-size:11.5px;font-weight:700;cursor:pointer;width:100%">🔥 Auto-project spread →</button>`);}});
   S.liveLayers.incs.on('load',()=>{$('s1').className='sdot';queryStats();});
   S.liveLayers.incs.on('requesterror',()=>{$('s1').className='sdot e';chip('c-data','⚠ NIFC offline','err');});
   S.liveLayers.raws=L.esri.featureLayer({url:NIFC_R,pointToLayer:(gj,ll)=>L.circleMarker(ll,{radius:4,color:'#42A5F5',weight:1.5,fillColor:'#42A5F5',fillOpacity:.7}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<b>${p.StationName||'RAWS'}</b><br><small>${p.NWSID||''}</small>`);}});
@@ -688,6 +693,187 @@ function bindUI(){
   $('e-gj').addEventListener('click',exportGJ);$('e-csv').addEventListener('click',exportCSV);
   $('e-share').addEventListener('click',()=>{navigator.clipboard?.writeText(location.href).then(()=>toast('Link copied!','o')).catch(()=>toast(location.href,'i',8000));});
   setInterval(()=>{S.ft++;if(S.sim&&!S.playing)draw();},140);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  AUTO-PROJECTION ENGINE (perimeter + FIRMS hotspots + NWS)
+// ═══════════════════════════════════════════════════════════════
+
+// Point-in-polygon (ray casting, GeoJSON [lng,lat] order)
+function pip(lng,lat,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const[xi,yi]=ring[i],[xj,yj]=ring[j];
+    if(((yi>lat)!==(yj>lat))&&(lng<(xj-xi)*(lat-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+
+// Fetch NIFC perimeter polygon by incident name
+function fetchNIFCPerim(name){
+  return new Promise(resolve=>{
+    const safe=name.toUpperCase().replace(/'/g,"''");
+    L.esri.query({url:NIFC_P})
+      .where(`UPPER(poly_IncidentName)='${safe}' OR UPPER(IncidentName)='${safe}'`)
+      .returnGeometry(true).limit(3)
+      .run((err,fc)=>resolve(err||!fc?.features?.length?[]:fc.features));
+  });
+}
+
+// Fetch NASA FIRMS VIIRS hotspots (WFS, no key) within bounds
+async function fetchFIRMS(bounds){
+  const{south,north,west,east}=bounds;
+  // Try VIIRS SNPP 24h, fall back to MODIS 24h
+  const layers=['fires_viirs_snpp_24','fires_modis_24','fires_viirs_noaa20_24'];
+  for(const layer of layers){
+    try{
+      const url=`https://firms.modaps.eosdis.nasa.gov/mapserver/wfs?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=${layer}&OUTPUTFORMAT=application/json&BBOX=${west},${south},${east},${north},EPSG:4326&maxFeatures=500`;
+      const r=await fetch(url,{signal:AbortSignal.timeout(9000)});
+      if(!r.ok)continue;
+      const d=await r.json();
+      if(d.features?.length){
+        $('s3').className='sdot';
+        return{features:d.features,source:layer};
+      }
+    }catch(e){/* try next */}
+  }
+  $('s3').className='sdot e';
+  return{features:[],source:null};
+}
+
+// Rasterize NIFC perimeter polygon to CA grid
+// Returns grid with CHAR inside perimeter, FLAME at fire edge
+function rasterizePerim(feat,bounds,terrain){
+  const geom=feat.geometry;
+  let rings=[];
+  if(geom.type==='Polygon') rings=geom.coordinates.map(r=>r);
+  else if(geom.type==='MultiPolygon') rings=geom.coordinates.flatMap(p=>p);
+  const outer=rings.filter((_,i)=>i%2===0); // outer rings only (even index)
+
+  const lngs=bounds.east-bounds.west, lats=bounds.north-bounds.south;
+  const grid=terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0})));
+
+  let charCount=0;
+  for(let y=0;y<G;y++){
+    const lat=bounds.north-(y+.5)/G*lats;
+    for(let x=0;x<G;x++){
+      const lng=bounds.west+(x+.5)/G*lngs;
+      let inside=false;
+      for(const ring of rings){ if(pip(lng,lat,ring)) inside=!inside; }
+      if(inside&&grid[y][x].type!==T.WATER){
+        grid[y][x]={...grid[y][x],fire:F.CHAR,tick:99};
+        charCount++;
+      }
+    }
+  }
+
+  // Mark perimeter edge cells as FLAME
+  const eg=grid.map(r=>r.map(c=>({...c})));
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    if(grid[y][x].fire!==F.CHAR||TP[grid[y][x].type].ros===0) continue;
+    let edge=false;
+    for(let dy=-1;dy<=1&&!edge;dy++) for(let dx=-1;dx<=1&&!edge;dx++){
+      if(!dx&&!dy) continue;
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||nx>=G||ny<0||ny>=G||grid[ny]?.[nx]?.fire===F.NONE) edge=true;
+    }
+    if(edge) eg[y][x]={...grid[y][x],fire:F.FLAME,tick:0};
+  }
+  return{grid:eg,charCount};
+}
+
+// Overlay FIRMS hotspot points onto grid as FLAME cells
+function overlayHotspots(grid,hotspots,bounds){
+  const lngs=bounds.east-bounds.west,lats=bounds.north-bounds.south;
+  const g=grid.map(r=>r.map(c=>({...c})));
+  let count=0;
+  for(const feat of hotspots){
+    const[lng,lat]=feat.geometry.coordinates;
+    const gx=Math.max(0,Math.min(G-1,Math.round(((lng-bounds.west)/lngs)*G)));
+    const gy=Math.max(0,Math.min(G-1,Math.round(((bounds.north-lat)/lats)*G)));
+    if(g[gy][gx].type===T.WATER) continue;
+    g[gy][gx]={...g[gy][gx],fire:F.FLAME,tick:0};
+    // Spread hotspot to 1-cell ring (VIIRS pixels ~375m, our cells ~50m)
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      const nx=gx+dx,ny=gy+dy;
+      if(nx<0||nx>=G||ny<0||ny>=G||g[ny][nx].type===T.WATER) continue;
+      if(g[ny][nx].fire===F.NONE) g[ny][nx]={...g[ny][nx],fire:F.PRE,tick:0};
+    }
+    count++;
+  }
+  return{grid:g,count};
+}
+
+// Main auto-projection entry point (called from incident popup button)
+async function autoProject(lat,lng,name,acres){
+  // Clear previous
+  S.ignitions.forEach(p=>{ if(p.marker) S.map.removeLayer(p.marker); });
+  S.ignitions=[];renderIgnList();
+
+  // Place a marker at fire location
+  const marker=L.circleMarker([lat,lng],{radius:8,color:'#FF1744',weight:2,fillColor:'#FFEB3B',fillOpacity:1}).addTo(S.map);
+  S.ignitions=[{lat,lng,marker}];renderIgnList();
+  S.map.closePopup();
+
+  chip('c-zone',`⏳ Loading ${name}…`,'pulse dim');
+  toast(`🔥 Auto-projecting: ${name} (~${acres.toLocaleString()} acres)`,'i',6000);
+
+  const bounds=mkBounds(lat,lng);
+  const terrain=buildTerrain(lat,lng);
+
+  // Parallel fetch: NWS wind + NIFC perimeter + FIRMS hotspots
+  const[,perimFeats,firmsData]=await Promise.all([
+    fetchNWS(lat,lng).catch(()=>null),
+    fetchNIFCPerim(name).catch(()=>[]),
+    fetchFIRMS(bounds).catch(()=>({features:[],source:null}))
+  ]);
+
+  let initGrid=null;
+  let statusParts=[];
+
+  // Rasterize perimeter if found
+  if(perimFeats.length>0){
+    const{grid,charCount}=rasterizePerim(perimFeats[0],bounds,terrain);
+    initGrid=grid;
+    statusParts.push(`~${fmtAc(charCount)} ac perimeter`);
+    toast(`Perimeter loaded · ~${fmtAc(charCount)} acres in zone`,'o');
+  }
+
+  // Overlay FIRMS hotspots
+  if(firmsData.features.length>0){
+    const base=initGrid||(terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0}))));
+    const{grid,count}=overlayHotspots(base,firmsData.features,bounds);
+    initGrid=grid;
+    const src=firmsData.source?.includes('viirs')?'VIIRS':firmsData.source?.includes('modis')?'MODIS':'NASA';
+    statusParts.push(`${count} ${src} hotspots`);
+    toast(`${count} ${src} hotspot(s) → FLAME cells`,'o');
+  }
+
+  // Nothing loaded — fall back to center ignition
+  if(!initGrid){
+    toast(`No perimeter/hotspots found — center ignition`,'wrn');
+    statusParts.push('center ignition (fallback)');
+  }
+
+  const ignPts=[ll2g(lat,lng,bounds)];
+  const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts,initGrid};
+  S.sim={terrain,bounds,center:{lat,lng},params};
+
+  if(S.mode==='prob'){
+    S.probGrid=runEnsemble(terrain,params);
+    S.sim.snapshots=runSim(terrain,params);
+  }else{
+    S.sim.snapshots=runSim(terrain,params);
+    S.probGrid=null;
+  }
+
+  S.step=0;enableTL();updateURL();
+  ['wind-ov','tbadge','zstats'].forEach(id=>{const e=$(id);if(e)e.style.display=id==='zstats'?'block':'flex';});
+  if(S.showGchart){$('gchart').style.display='block';buildGChart();}
+  drawCompass(S.windDeg);updateUI();draw();
+  chip('c-zone',`🔥 ${name} · ${statusParts.join(' · ')}`,'pri');
+  toast(`Projection ready · ${statusParts.join(', ')}`,'o');
 }
 
 window.addEventListener('load',()=>{boot('Binding UI…');bindUI();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
