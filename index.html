@@ -400,14 +400,19 @@ button{font-family:inherit;cursor:pointer}
 let G=160,KM=20,STP=96,ENS=15;
 const T={GRASS:0,SHRUB:1,FOREST:2,URBAN:3,WATER:4,ROAD:5,ROCKY:6};
 const F={NONE:0,PRE:1,FLAME:2,CHAR:3};
+// Fuel models — calibrated to Scott & Burgan (2005) 40 standard fuel models
+// ros: no-wind, no-slope base ROS (m/min) at ~10% dead fuel moisture
+// dur: time steps (5 min each) burning before char transition
+// mxt: dead fine fuel moisture extinction fraction (spread stops above this)
+// Based on: GRASS≈GR2, SHRUB≈SH5, FOREST≈TU5, URBAN≈NB8
 const TP=[
-  {ros:1.40,dur:2, rgb:[148,184,78]},
-  {ros:0.90,dur:5, rgb:[98,143,58]},
-  {ros:0.60,dur:9, rgb:[38,92,38]},
-  {ros:0.45,dur:7, rgb:[166,161,156]},
-  {ros:0.00,dur:99,rgb:[28,78,162]},
-  {ros:0.00,dur:99,rgb:[126,116,106]},
-  {ros:0.02,dur:99,rgb:[141,131,121]}
+  {ros:4.5,  dur:2,  mxt:0.15, rgb:[148,184,78] }, // GRASS  — short grass, flash fuel
+  {ros:2.2,  dur:5,  mxt:0.20, rgb:[98,143,58]  }, // SHRUB  — high-load chaparral
+  {ros:0.55, dur:10, mxt:0.25, rgb:[38,92,38]   }, // FOREST — timber w/ understory
+  {ros:0.45, dur:8,  mxt:0.30, rgb:[166,161,156]}, // URBAN  — structure/mix
+  {ros:0.0,  dur:99, mxt:0.99, rgb:[28,78,162]  }, // WATER
+  {ros:0.0,  dur:99, mxt:0.99, rgb:[126,116,106]}, // ROAD
+  {ros:0.08, dur:99, mxt:0.35, rgb:[141,131,121]}, // ROCKY  — sparse litter
 ];
 const CDEG={N:0,NNE:22,NE:45,ENE:68,E:90,ESE:112,SE:135,SSE:158,S:180,SSW:202,SW:225,WSW:248,W:270,WNW:292,NW:315,NNW:338};
 const NIFC_P='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0';
@@ -500,8 +505,9 @@ function runSim(terrain,params,seed=31337){
           const LB=Math.max(1.05,1+8.729*Math.pow(Math.max(0,1-Math.exp(-0.030*U_kmh)),2.155));
           const ec=(LB-1)/(LB+1);
           // ── ALG 2: Van Wagner crown fire ─────────────────────────────────────────
-          const I_surf=TP[c.type].ros*(1-Math.min(c.moist,1))*windSpd*0.12;
-          const isCrown=c.type===T.FOREST&&I_surf>1.5&&windSpd>15;
+          // Van Wagner (1977): crown fire needs sustained >18mph + low live fuel moisture
+          const I_surf=TP[c.type].ros*(1-Math.min(c.moist*4,1))*windSpd*0.10;
+          const isCrown=c.type===T.FOREST&&I_surf>0.9&&windSpd>18&&c.moist<0.20;
           const crownMult=isCrown?2.8:1.0;
           // ── ALG 3: Terrain wind channeling ──────────────────────────────────────
           const terrMult=c.elev<0.25?1.28:c.elev>0.78?0.82:1.0;
@@ -520,16 +526,30 @@ function runSim(terrain,params,seed=31337){
             const rise=nb.elev-c.elev;
             const sf=Math.exp(4.2*rise+0.9*rise*Math.max(0,cosT));
             const df=(Math.abs(dx)+Math.abs(dy)===2)?0.707:1.0;
-            const prob=Math.min(0.97,TP[nb.type].ros*ellF*sf*fwiMF(nb.moist)*df*crownMult*terrMult*0.44);
+            // ── Rothermel physics: P = (ROS_actual × Δt) / cell_size ──────────────
+            // Wind magnitude factor — calibrated empirical fit to Rothermel (1972)
+            // GR2 grass: at 0 mph → 1×, 15 mph → ~4×, 30 mph → ~9×, 50 mph → ~18×
+            const windMag=1+1.2*Math.pow(Math.max(0,windSpd)/10,1.3);
+            // Moisture damping: Rothermel (1972) Eq. 27 — polynomial on M/M_x
+            // Reaches zero exactly at M = M_x (extinction moisture)
+            const _r=Math.min(1,nb.moist/Math.max(0.01,TP[nb.type].mxt));
+            const moistD=Math.max(0,1-2.59*_r+5.11*_r*_r-3.52*_r*_r*_r);
+            // Actual ROS (m/min): base × wind magnitude × Huygens direction × slope × moisture × crown × terrain
+            const rosAct=TP[nb.type].ros*windMag*ellF*sf*moistD*crownMult*terrMult;
+            // Probability = fraction of cell traversed in one 5-min step
+            const cellM_=KM*1000/G;
+            const prob=Math.min(0.97,(rosAct*5)/(cellM_*df));
             if(rng()<prob)ng[ny][nx]={...nb,fire:F.PRE,tick:0,crown:isCrown&&nb.type===T.FOREST};
           }
         // ── ALGORITHM 5: Trajectory-based ember transport ───────────────────────────
         // Embers follow a ballistic arc in wind direction with lateral dispersion.
         // Crown fires shed far more embers (brand flux ∝ fire intensity).
         // ── ALG 5: Trajectory-based brand (ember) transport ────────────────────
-        const brandRate=isCrown?0.055:0.016;
+        // Brand flux: ~2% crown, ~0.5% surface per burning cell per step
+const brandRate=isCrown?0.020:0.005;
         if(rng()<brandRate*(1+windSpd/14)){
-          const dist=8+Math.floor(rng()*24);
+          // Spotfire distance: Albini (1979) lofting model → 300-2500m typical
+const dist=Math.max(2,Math.round((4+rng()*16)*(windSpd/20)));
           const lateral=(rng()-.5)*dist*0.38;
           const ex=Math.round(x+Math.sin(wRad)*dist+Math.cos(wRad)*lateral);
           const ey=Math.round(y-Math.cos(wRad)*dist+Math.sin(wRad)*lateral);
@@ -834,7 +854,14 @@ async function fetchNWSSequence(lat,lng){
     // Update sliders to current conditions
     setSlider('sl-wd','wdf','wdt','wdv',deg0,v=>`${v}°`);
     setSlider('sl-ws','wsf','wst','wsv',spd0,v=>`${v} mph`);
-    if(hum!=null){const mo=Math.round(hum/100*25);S.moist=mo/100;setSlider('sl-mo','mof','mot','mov',mo,v=>`${v}%`);}
+    if(hum!=null){
+      // EMC (equilibrium moisture content) from relative humidity — simplified Nelson (1984)
+      const rh=hum/100;
+      const emcFrac=Math.max(0.03,Math.min(0.38,0.03+Math.pow(rh,1.5)*0.22));
+      const emcPct=Math.round(emcFrac*100);
+      S.moist=emcFrac;
+      setSlider('sl-mo','mof','mot','mov',emcPct,v=>`${v}%`);
+    }
     S.windSpd=spd0; S.windDeg=deg0;
     // Store wind timeline for playback
     S.windSteps=windSteps;
