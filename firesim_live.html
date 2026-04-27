@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>FireSim Live — Open Wildfire Expansion Projector</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#060F18;--s1:#09141F;--s2:#0D2535;--s3:#1E3050;--pri:#FF6D00;--pb:#FF8F00;--pd:#E65100;--fg:#E8EAED;--f2:#90A4AE;--f3:#546E7A;--f4:#37474F;--err:#EF5350;--wrn:#FFA726;--ok:#66BB6A;--inf:#42A5F5}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--fg);overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+
+/* Boot */
+#boot{position:fixed;inset:0;z-index:9999;background:radial-gradient(ellipse at 50% 50%,#0D2535,var(--bg));display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;transition:opacity .5s,visibility .5s}
+#boot.gone{opacity:0;visibility:hidden;pointer-events:none}
+.blogo{font-size:58px;animation:pulse 1.4s ease infinite}
+.btitle{font-size:22px;font-weight:800;background:linear-gradient(90deg,var(--pb),var(--pri));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.bsub{font-size:10px;color:var(--f4);font-family:'DM Mono',monospace;letter-spacing:1.5px}
+.bbar{width:240px;height:3px;background:var(--s2);border-radius:2px;overflow:hidden}
+.bbar>div{height:100%;background:linear-gradient(90deg,transparent,var(--pri),transparent);background-size:200%;animation:shimmer 1.4s linear infinite}
+#bmsg{font-size:10px;color:var(--f4);font-family:'DM Mono',monospace;text-align:center;min-height:14px}
+
+/* App bar */
+.bar{position:fixed;top:0;left:0;right:0;height:56px;z-index:1000;background:rgba(9,20,33,.96);backdrop-filter:blur(14px);border-bottom:1px solid var(--s2);display:flex;align-items:center;padding:0 16px;gap:12px}
+.ibtn{width:40px;height:40px;background:transparent;border:none;color:var(--fg);font-size:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0}
+.ibtn:hover{background:var(--s2)}
+.atitle{font-size:17px;font-weight:800;background:linear-gradient(90deg,var(--pb),var(--pri));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.4px}
+.asub{font-size:9px;color:var(--f4);font-family:'DM Mono',monospace;letter-spacing:.8px}
+.chips{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:4px;white-space:nowrap;border:1px solid;transition:all .2s}
+.chip.err{background:rgba(239,83,80,.13);border-color:rgba(239,83,80,.4);color:var(--err)}
+.chip.pri{background:rgba(255,109,0,.14);border-color:rgba(255,109,0,.45);color:var(--pb)}
+.chip.inf{background:rgba(66,165,245,.13);border-color:rgba(66,165,245,.4);color:var(--inf)}
+.chip.ok{background:rgba(102,187,106,.13);border-color:rgba(102,187,106,.4);color:var(--ok)}
+.chip.dim{background:var(--s2);border-color:var(--s3);color:var(--f2)}
+.chip.wrn{background:rgba(255,167,38,.13);border-color:rgba(255,167,38,.4);color:var(--wrn)}
+.chip.pulse{animation:pulse 1.5s ease infinite}
+
+/* Side panel */
+.side{position:fixed;top:56px;left:0;bottom:88px;width:320px;z-index:900;background:rgba(9,20,33,.96);backdrop-filter:blur(14px);border-right:1px solid var(--s2);display:flex;flex-direction:column;transition:transform .28s cubic-bezier(.4,0,.2,1)}
+.side.col{transform:translateX(-100%)}
+.side.col~#map,.side.col~#ov,.side.col~.tl{left:0!important}
+.tabs{display:flex;padding:10px;gap:4px;border-bottom:1px solid var(--s2)}
+.tab{flex:1;padding:7px 3px;background:transparent;border:1px solid transparent;border-radius:8px;color:var(--f3);font-size:10px;font-weight:700;letter-spacing:.5px;transition:all .15s}
+.tab:hover{background:var(--s2);color:var(--f2)}
+.tab.on{background:linear-gradient(135deg,var(--pri),var(--pd));color:#fff;border-color:var(--pri);box-shadow:0 2px 8px rgba(255,109,0,.3)}
+.tc{flex:1;overflow-y:auto;padding:14px;display:none;animation:fadeIn .25s ease}
+.tc.on{display:block}
+
+/* Controls */
+.sh{font-size:9.5px;font-weight:800;color:var(--f4);text-transform:uppercase;letter-spacing:1.6px;margin:18px 0 10px;display:flex;align-items:center;gap:8px}
+.sh:first-child{margin-top:0}
+.sh::before{content:'';width:16px;height:1.5px;background:var(--f4)}
+.hint{background:linear-gradient(135deg,rgba(255,109,0,.1),rgba(230,81,0,.04));border:1px solid rgba(255,109,0,.3);border-radius:12px;padding:12px;font-size:11.5px;color:var(--f2);line-height:1.5;display:flex;gap:10px;align-items:flex-start;margin-bottom:16px}
+.hint .ic{font-size:18px;flex-shrink:0}
+.hint b{color:var(--pb)}
+
+/* Sliders */
+.slrow{margin-bottom:14px}
+.slhd{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.slhd>span:first-child{color:var(--f2)}
+.slv{color:var(--pb);font-weight:700;font-family:'DM Mono',monospace;font-size:11px}
+.track{position:relative;height:5px;border-radius:3px;background:var(--s2)}
+.track input{position:absolute;top:-9px;left:0;width:100%;height:24px;opacity:0;cursor:pointer;z-index:2;margin:0}
+.tfill{position:absolute;left:0;top:0;height:100%;border-radius:3px;pointer-events:none}
+.tthumb{position:absolute;top:-5.5px;width:16px;height:16px;border-radius:50%;pointer-events:none;border:2px solid var(--bg)}
+
+/* Toggles */
+.trow{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;font-size:12.5px;color:var(--f2);cursor:pointer;border-radius:8px;transition:background .12s}
+.trow:hover{background:var(--s2)}
+.trow>span{display:flex;align-items:center;gap:8px}
+.dsw{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.tog{width:40px;height:22px;border-radius:11px;cursor:pointer;position:relative;flex-shrink:0;background:var(--s2);border:1px solid var(--s3);transition:all .2s}
+.tog.on{background:var(--pri);border-color:var(--pri)}
+.tog .kn{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s}
+.tog.on .kn{left:22px;box-shadow:0 0 6px rgba(255,109,0,.7)}
+
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.bbtn{padding:9px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:8px;color:var(--f2);font-size:11px;font-weight:600;transition:all .15s}
+.bbtn:hover{color:var(--fg)}
+.bbtn.on{background:var(--pri);border-color:var(--pri);color:#fff;box-shadow:0 0 12px rgba(255,109,0,.3)}
+
+/* Mode bar */
+.mbar{display:flex;background:var(--bg);border-radius:12px;padding:4px;border:1px solid var(--s2);gap:3px;margin-bottom:14px}
+.mbtn{flex:1;padding:8px 4px;background:transparent;border:1px solid transparent;border-radius:8px;color:var(--f3);font-size:10.5px;font-weight:700;transition:all .15s}
+.mbtn:hover{background:var(--s2);color:var(--f2)}
+.mbtn.on{background:var(--s3);border-color:var(--s3);color:var(--fg)}
+.mbtn.on.prob{background:linear-gradient(135deg,#0277BD,#01579B);border-color:#0288D1;color:#fff}
+
+/* Stat cards */
+.scard{background:var(--s2);border:1px solid var(--s3);border-radius:12px;padding:12px;margin-bottom:8px}
+.slbl{font-size:9.5px;color:var(--f4);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.sval{font-size:22px;font-weight:800;font-family:'DM Mono',monospace;color:var(--fg)}
+.ssub{font-size:10px;color:var(--f3);margin-top:2px}
+.srow{display:flex;justify-content:space-between;padding:7px 4px;font-size:12px;border-bottom:1px solid var(--s2)}
+.srow:last-child{border:none}
+.srow>span:first-child{color:var(--f3)}
+.srow>span:last-child{color:var(--fg);font-weight:600;font-family:'DM Mono',monospace}
+
+/* Search */
+.srow2{display:flex;gap:6px;margin-bottom:4px}
+.sinp{flex:1;padding:9px 12px;background:var(--s2);border:1px solid var(--s3);border-radius:8px;color:var(--fg);font-size:12px;outline:none;transition:border-color .15s}
+.sinp:focus{border-color:var(--pri)}
+.sbtn{padding:9px 14px;background:var(--pri);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px}
+
+/* Weather card */
+.wcard{background:linear-gradient(135deg,rgba(33,150,243,.1),rgba(0,188,212,.04));border:1px solid rgba(33,150,243,.3);border-radius:12px;padding:12px;margin-bottom:14px}
+.wchd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.wct{font-size:9.5px;font-weight:700;color:var(--inf);letter-spacing:1px}
+.wcb{font-size:9px;font-family:'DM Mono',monospace;background:rgba(33,150,243,.2);padding:2px 7px;border-radius:10px;color:var(--inf)}
+.wgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.wv{background:var(--s2);border-radius:8px;padding:7px 9px}
+.wv .wl{font-size:8.5px;color:var(--f4);letter-spacing:.8px}
+.wv .wn{font-size:17px;font-weight:800;font-family:'DM Mono',monospace;color:var(--fg);margin:1px 0}
+.wv .wu{font-size:8.5px;color:var(--f3)}
+
+/* Ignition list */
+.ignlist{display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
+.igni{background:var(--s2);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;font-size:11.5px}
+.igni .ii{flex:1}.igni small{color:var(--f3);font-size:9.5px;font-family:'DM Mono',monospace;display:block}
+.igni .irm{font-size:13px;background:none;border:none;cursor:pointer;color:var(--err);padding:0 3px}
+
+/* Export buttons */
+.ebtn{width:100%;padding:9px;background:var(--s2);border:1px solid var(--s3);color:var(--f2);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:7px}
+.ebtn:hover{background:var(--s3);color:var(--fg);border-color:var(--pri)}
+.ebtn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Source list */
+.srclist{display:flex;flex-direction:column;gap:5px}
+.srci{background:var(--s2);border:1px solid var(--s3);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--f2);display:flex;align-items:center;gap:8px}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--ok);box-shadow:0 0 5px var(--ok)}
+.sdot.e{background:var(--err);box-shadow:0 0 5px var(--err)}
+.sdot.ld{background:var(--wrn);animation:pulse 1s infinite}
+
+.abox{background:var(--bg);border:1px solid var(--s2);border-radius:12px;padding:12px;margin-top:10px}
+.abox .at{font-size:9.5px;font-weight:700;color:var(--inf);letter-spacing:1.2px;margin-bottom:8px}
+.abox .ab{font-size:10.5px;color:var(--f3);font-family:'DM Mono',monospace;line-height:1.8}
+
+/* Map */
+#map{position:fixed;top:56px;left:320px;right:0;bottom:88px;background:var(--bg);transition:left .28s cubic-bezier(.4,0,.2,1)}
+#ov{position:fixed;top:56px;left:320px;right:0;bottom:88px;pointer-events:none;z-index:400;transition:left .28s cubic-bezier(.4,0,.2,1)}
+
+/* Map overlays */
+.mcrd{position:absolute;z-index:500;background:rgba(9,20,33,.88);backdrop-filter:blur(10px);border:1px solid var(--s2);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.45)}
+.litem{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--f2);margin-bottom:3px}
+.lsw{width:12px;height:12px}
+
+/* Timeline */
+.tl{position:fixed;bottom:0;left:320px;right:0;height:88px;z-index:1000;background:rgba(9,20,33,.96);backdrop-filter:blur(14px);border-top:1px solid var(--s2);display:flex;align-items:center;padding:12px 20px;gap:12px;transition:left .28s cubic-bezier(.4,0,.2,1)}
+.tlc{display:flex;gap:6px;align-items:center}
+.cb{width:36px;height:36px;background:var(--s2);border:1px solid var(--s3);color:var(--fg);border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.cb:hover{background:var(--s3)}
+.cb:disabled{opacity:.35;cursor:not-allowed}
+.pb{width:48px;height:38px;background:linear-gradient(135deg,var(--s2),var(--s1));border:1px solid var(--s3);color:#fff;border-radius:10px;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.pb.pl{background:linear-gradient(135deg,var(--pri),var(--pd));border-color:var(--pri);box-shadow:0 0 16px rgba(255,109,0,.4)}
+.tblk{flex:1;display:flex;flex-direction:column;gap:4px;padding:0 4px}
+.tbar{position:relative;height:6px;background:var(--s2);border-radius:3px;cursor:pointer}
+.tbar input{position:absolute;top:-10px;left:0;width:100%;height:26px;opacity:0;margin:0;cursor:pointer;z-index:2}
+.tbar.off input{cursor:not-allowed}
+.tbf{position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,var(--pb),var(--err));border-radius:3px;pointer-events:none}
+.tbt{position:absolute;top:-5px;width:16px;height:16px;border-radius:50%;background:var(--pb);border:2px solid var(--bg);pointer-events:none;box-shadow:0 0 10px rgba(255,142,0,.7)}
+.tmarks{display:flex;justify-content:space-between;font-size:9px;color:var(--f4);font-family:'DM Mono',monospace}
+.tdsp{font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:var(--pb);min-width:90px;text-align:right}
+.spd{display:flex;align-items:center;gap:5px;padding:0 2px}
+.spd>span{font-size:9.5px;color:var(--f4);font-family:'DM Mono',monospace;letter-spacing:1px}
+.spdb{padding:4px 9px;background:transparent;border:1px solid var(--s3);color:var(--f3);border-radius:16px;font-size:10.5px;font-weight:700;transition:all .15s}
+.spdb:hover{border-color:var(--f2);color:var(--f2)}
+.spdb.on{background:var(--pri);border-color:var(--pri);color:#fff}
+
+/* Toast */
+#toasts{position:fixed;bottom:100px;right:16px;z-index:2000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.tst{background:var(--s1);border:1px solid var(--s3);border-left:3px solid var(--pri);border-radius:12px;padding:10px 14px;font-size:12px;color:var(--fg);max-width:300px;box-shadow:0 12px 48px rgba(0,0,0,.7);animation:fadeIn .3s ease;pointer-events:auto}
+.tst.e{border-left-color:var(--err)}.tst.o{border-left-color:var(--ok)}.tst.i{border-left-color:var(--inf)}
+
+/* Leaflet */
+.leaflet-container{background:var(--bg)!important;font-family:inherit}
+.leaflet-control-zoom a{background:var(--s1)!important;color:var(--fg)!important;border:1px solid var(--s2)!important}
+.leaflet-control-zoom a:hover{background:var(--s2)!important}
+.leaflet-control-attribution{background:rgba(9,20,33,.8)!important;color:var(--f3)!important;font-size:9px!important}
+.leaflet-popup-content-wrapper{background:var(--s1)!important;color:var(--fg)!important;border:1px solid var(--s3)!important;border-radius:12px!important;box-shadow:0 12px 48px rgba(0,0,0,.7)!important}
+.leaflet-popup-tip{background:var(--s1)!important}
+.leaflet-popup-content{margin:12px 14px!important;font-size:12px!important;line-height:1.5}
+.leaflet-popup-content b{color:var(--pb);font-weight:700}
+.leaflet-popup-content small{color:var(--f3);font-family:'DM Mono',monospace}
+
+@media(max-width:720px){.side{width:280px}#map,.tl,#ov{left:0!important}.asub{display:none}.spd>span{display:none}}
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <div class="blogo">🔥</div>
+  <div class="btitle">FireSim Live</div>
+  <div class="bsub">WILDFIRE PROJECTOR · OPEN DATA · NO API KEYS</div>
+  <div class="bbar"><div></div></div>
+  <div id="bmsg">Initializing…</div>
+</div>
+
+<header class="bar">
+  <button class="ibtn" id="menu-btn">☰</button>
+  <div><div class="atitle">🔥 FireSim Live</div><div class="asub">ROTHERMEL CA · EMBER SPOTTING · NWS WIND · NIFC LIVE DATA</div></div>
+  <div class="chips">
+    <div class="chip dim" id="c-data">🌐 Connecting…</div>
+    <div class="chip pri" id="c-fires">⏳ —</div>
+    <div class="chip ok"  id="c-acres">📐 —</div>
+    <div class="chip inf" id="c-zone">🎯 Click map to project</div>
+    <div class="chip dim" id="c-mode">📊 Single run</div>
+  </div>
+</header>
+
+<aside class="side" id="side">
+  <div class="tabs">
+    <button class="tab on" data-t="proj">⚙ Project</button>
+    <button class="tab" data-t="lyrs">🗺 Layers</button>
+    <button class="tab" data-t="data">📊 Data</button>
+    <button class="tab" data-t="expo">⬇ Export</button>
+  </div>
+
+  <!-- PROJECT -->
+  <div class="tc on" id="t-proj">
+    <div class="hint">
+      <span class="ic">👆</span>
+      <div><b>Click the map to project spread</b> from any point. <b>NOAA/NWS wind is auto-fetched</b> for US locations. Multiple clicks add ignition points.</div>
+    </div>
+    <div class="mbar">
+      <button class="mbtn on" id="mb-single">🔥 Single run</button>
+      <button class="mbtn" id="mb-prob">📊 Probability (15×)</button>
+    </div>
+    <div class="wcard" id="wcard" style="display:none">
+      <div class="wchd"><span class="wct">🌩 NWS CONDITIONS</span><span class="wcb" id="wcard-src">—</span></div>
+      <div class="wgrid">
+        <div class="wv"><div class="wl">WIND SPD</div><div class="wn" id="ww-s">—</div><div class="wu">mph NWS</div></div>
+        <div class="wv"><div class="wl">WIND DIR</div><div class="wn" id="ww-d">—</div><div class="wu">from</div></div>
+        <div class="wv"><div class="wl">TEMP</div><div class="wn" id="ww-t">—</div><div class="wu">°F</div></div>
+        <div class="wv"><div class="wl">HUMIDITY</div><div class="wn" id="ww-h">—</div><div class="wu">%</div></div>
+      </div>
+    </div>
+    <div class="sh">Wind</div>
+    <div class="slrow">
+      <div class="slhd"><span>💨 Direction (from)</span><span class="slv" id="wdv">225°</span></div>
+      <div class="track"><div class="tfill" id="wdf" style="background:#90CAF9"></div><div class="tthumb" id="wdt" style="background:#90CAF9;box-shadow:0 0 6px #90CAF966"></div><input type="range" id="sl-wd" min="0" max="360" value="225"></div>
+    </div>
+    <div class="slrow">
+      <div class="slhd"><span>🌪 Speed</span><span class="slv" id="wsv">15 mph</span></div>
+      <div class="track"><div class="tfill" id="wsf" style="background:#90CAF9"></div><div class="tthumb" id="wst" style="background:#90CAF9;box-shadow:0 0 6px #90CAF966"></div><input type="range" id="sl-ws" min="0" max="60" value="15"></div>
+    </div>
+    <div class="sh">Fuel</div>
+    <div class="slrow">
+      <div class="slhd"><span>💧 Moisture</span><span class="slv" id="mov">10%</span></div>
+      <div class="track"><div class="tfill" id="mof" style="background:#80DEEA"></div><div class="tthumb" id="mot" style="background:#80DEEA;box-shadow:0 0 6px #80DEEA66"></div><input type="range" id="sl-mo" min="0" max="50" value="10"></div>
+    </div>
+    <div class="sh">Ignition Points</div>
+    <div id="ignlist" class="ignlist"></div>
+    <div style="font-size:11px;color:var(--f3);margin-bottom:14px">Each map click adds an ignition point. Click item × to remove.</div>
+    <div class="sh">Search Active Fires</div>
+    <div class="srow2"><input class="sinp" id="sinp" placeholder="Fire name (PARK, FLAT…)"><button class="sbtn" id="sbtn">→</button></div>
+    <div class="abox">
+      <div class="at">⚡ ALGORITHM</div>
+      <div class="ab">Rothermel ROS: φ_w=e^(0.065·V·cosθ)<br>Slope: φ_s=e^(4.2·Δh)<br>Moisture extinction applied<br>Stochastic ember spotting<br>Moore(8) CA · 80×80 grid<br>Δt=5 min · 72 steps (6h)<br>Ensemble: 15 RNG seeds</div>
+    </div>
+  </div>
+
+  <!-- LAYERS -->
+  <div class="tc" id="t-lyrs">
+    <div class="sh">Live Open Data</div>
+    <div class="trow" data-lay="perims"><span><span class="dsw" style="background:#FFEB3B"></span>Fire Perimeters (NIFC WFIGS)</span><div class="tog on" id="tog-perims"><div class="kn"></div></div></div>
+    <div class="trow" data-lay="incs"><span><span class="dsw" style="background:#FF6D00;border-radius:50%"></span>Wildfire Incidents (WFIGS)</span><div class="tog on" id="tog-incs"><div class="kn"></div></div></div>
+    <div class="trow" data-lay="raws"><span><span class="dsw" style="background:#42A5F5;border-radius:50%"></span>RAWS Weather Stations</span><div class="tog" id="tog-raws"><div class="kn"></div></div></div>
+    <div class="trow" data-lay="modis"><span><span class="dsw" style="background:#E91E63"></span>MODIS Thermal (NASA GIBS)</span><div class="tog" id="tog-modis"><div class="kn"></div></div></div>
+    <div class="sh">Base Map</div>
+    <div class="bgrid">
+      <button class="bbtn on" data-bm="dark">🌑 Dark</button>
+      <button class="bbtn" data-bm="terrain">🏔 Terrain</button>
+      <button class="bbtn" data-bm="satellite">🛰 Satellite</button>
+      <button class="bbtn" data-bm="street">🛣 Street</button>
+    </div>
+    <div class="sh">Projection</div>
+    <div class="trow" data-disp="perim"><span>🔥 Fire perimeter</span><div class="tog on" id="tog-perim"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="char"><span>⬛ Charred area</span><div class="tog on" id="tog-char"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="zone"><span>📐 Zone outline</span><div class="tog on" id="tog-zone"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="smoke"><span>💨 Smoke</span><div class="tog on" id="tog-smoke"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="gchart"><span>📈 Growth chart</span><div class="tog on" id="tog-gchart"><div class="kn"></div></div></div>
+  </div>
+
+  <!-- DATA -->
+  <div class="tc" id="t-data">
+    <div class="sh">National Status</div>
+    <div class="scard"><div class="slbl">Active US Wildfires</div><div class="sval" id="ds-f">—</div><div class="ssub">NIFC WFIGS</div></div>
+    <div class="scard"><div class="slbl">Total Acreage</div><div class="sval" id="ds-a">—</div><div class="ssub">Sum of reported sizes</div></div>
+    <div class="scard"><div class="slbl">Largest Fire</div><div class="sval" id="ds-b" style="font-size:13px">—</div><div class="ssub" id="ds-bs"></div></div>
+    <div class="sh">Projection</div>
+    <div id="pstats"><div class="srow"><span>Status</span><span style="color:var(--f3)">No projection</span></div></div>
+    <div class="sh">Open Data Sources</div>
+    <div class="srclist">
+      <div class="srci"><div class="sdot ld" id="s0"></div>NIFC · Active Perimeters</div>
+      <div class="srci"><div class="sdot ld" id="s1"></div>NIFC · WFIGS Incidents</div>
+      <div class="srci"><div class="sdot" id="s2"></div>NIFC · RAWS Stations</div>
+      <div class="srci"><div class="sdot" id="s3"></div>NASA GIBS · MODIS Thermal</div>
+      <div class="srci"><div class="sdot" id="s4"></div>NOAA NWS · Gridded Weather</div>
+      <div class="srci"><div class="sdot" id="s5"></div>OpenStreetMap / CARTO / Esri</div>
+    </div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="tc" id="t-expo">
+    <div class="sh">Export</div>
+    <button class="ebtn" id="e-gj" disabled>📄 GeoJSON fire perimeter</button>
+    <button class="ebtn" id="e-csv" disabled>📊 CSV timestep data</button>
+    <button class="ebtn" id="e-share">🔗 Copy shareable URL</button>
+    <div class="sh">URL State</div>
+    <div style="font-size:11px;color:var(--f3);line-height:1.6">Params (lat, lng, wind, moisture) are encoded in the URL hash — share to restore projection.</div>
+    <div id="urld" style="font-size:10px;color:var(--f4);font-family:'DM Mono',monospace;word-break:break-all;margin-top:8px;padding:8px;background:var(--s2);border-radius:8px;display:none"></div>
+    <div class="abox" style="margin-top:14px">
+      <div class="at">📜 LICENSE</div>
+      <div class="ab">Code: MIT · No API keys<br>NIFC data: Public Domain<br>NOAA NWS: Public Domain<br>NASA GIBS: Public Domain<br>OSM: ODbL License</div>
+    </div>
+  </div>
+</aside>
+
+<main id="map"></main>
+<canvas id="ov"></canvas>
+
+<!-- Overlays on map -->
+<div class="mcrd" id="tbadge" style="top:14px;left:14px;padding:8px 16px;display:none;background:linear-gradient(135deg,rgba(230,81,0,.92),rgba(255,109,0,.85))">
+  <div style="font-size:16px;font-weight:800;font-family:'DM Mono',monospace" id="tb-t">T+0h 00m</div>
+  <div style="font-size:8.5px;opacity:.75;letter-spacing:.8px">FROM IGNITION</div>
+</div>
+<div class="mcrd" id="wind-ov" style="top:14px;right:14px;padding:10px 14px;display:none;flex-direction:row;align-items:center;gap:10px">
+  <svg id="cmp" width="64" height="64" viewBox="0 0 64 64"></svg>
+  <div>
+    <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:2px">WIND · SPREAD DIR</div>
+    <div style="font-size:13px;font-weight:700;color:var(--pb);font-family:'DM Mono',monospace" id="wread">15 mph @ 225°</div>
+    <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace" id="nwsl">Manual</div>
+  </div>
+</div>
+<div class="mcrd" id="prob-leg" style="bottom:14px;left:50%;transform:translateX(-50%);padding:10px 14px;display:none">
+  <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:6px">FIRE PROBABILITY (15-run ensemble)</div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:10px">
+    <div style="width:100px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgba(255,235,59,.2),rgba(255,109,0,.6),rgba(244,67,54,.9))"></div>
+    <span style="color:var(--f3)">0% → 100%</span>
+  </div>
+</div>
+<div class="mcrd" id="legend" style="bottom:14px;left:14px;padding:10px 12px">
+  <div class="litem"><div class="lsw" style="background:#F9A825;border-radius:2px"></div>Active Flame</div>
+  <div class="litem"><div class="lsw" style="background:#FF6D00;border-radius:2px"></div>Fire Perimeter</div>
+  <div class="litem"><div class="lsw" style="background:#1A1A1A;border-radius:2px"></div>Charred Area</div>
+  <div class="litem"><div class="lsw" style="background:#FFEB3B;border-radius:50%"></div>Live NIFC Fire</div>
+  <div class="litem"><div class="lsw" style="background:#FF1744;border-radius:50%"></div>Ignition Point(s)</div>
+</div>
+<div class="mcrd" id="zstats" style="bottom:14px;right:14px;padding:10px 14px;display:none;min-width:150px">
+  <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:6px">PROJECTED COVERAGE</div>
+  <div style="height:4px;background:var(--s2);border-radius:2px;overflow:hidden;margin-bottom:5px"><div id="zbar"></div></div>
+  <div style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace" id="zpct">0%</div>
+  <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace;margin-top:3px" id="zac">~0 acres</div>
+</div>
+<div class="mcrd" id="gchart" style="bottom:14px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none">
+  <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:5px;font-family:'DM Mono',monospace">BURN AREA GROWTH</div>
+  <svg id="gsvg" width="240" height="52" viewBox="0 0 240 52"></svg>
+</div>
+
+<footer class="tl">
+  <div class="tlc">
+    <button class="cb" id="b-rw" disabled>⏮</button>
+    <button class="cb" id="b-sb" disabled>◀</button>
+    <button class="pb" id="b-pl" disabled>▶</button>
+    <button class="cb" id="b-sf" disabled>▶</button>
+    <button class="cb" id="b-ff" disabled>⏭</button>
+  </div>
+  <div class="tblk">
+    <div class="tbar off" id="tbar">
+      <div class="tbf" id="tbf" style="width:0"></div>
+      <div class="tbt" id="tbt" style="left:-8px"></div>
+      <input type="range" id="tslider" min="0" max="71" value="0" disabled>
+    </div>
+    <div class="tmarks"><span>T+0h</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span><span>5h</span><span>T+6h</span></div>
+  </div>
+  <div class="tdsp" id="tdsp">T+0h 00m</div>
+  <div class="spd">
+    <span>SPEED</span>
+    <button class="spdb" data-ms="240">½×</button>
+    <button class="spdb on" data-ms="120">1×</button>
+    <button class="spdb" data-ms="60">2×</button>
+    <button class="spdb" data-ms="24">5×</button>
+    <button class="spdb" data-ms="10">10×</button>
+  </div>
+</footer>
+<div id="toasts"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
+<script>
+'use strict';
+const G=80,KM=4,STP=72,ENS=15;
+const T={GRASS:0,SHRUB:1,FOREST:2,URBAN:3,WATER:4,ROAD:5,ROCKY:6};
+const F={NONE:0,PRE:1,FLAME:2,CHAR:3};
+const TP=[
+  {ros:1.40,dur:2, rgb:[148,184,78]},
+  {ros:0.90,dur:5, rgb:[98,143,58]},
+  {ros:0.60,dur:9, rgb:[38,92,38]},
+  {ros:0.45,dur:7, rgb:[166,161,156]},
+  {ros:0.00,dur:99,rgb:[28,78,162]},
+  {ros:0.00,dur:99,rgb:[126,116,106]},
+  {ros:0.02,dur:99,rgb:[141,131,121]}
+];
+const CDEG={N:0,NNE:22,NE:45,ENE:68,E:90,ESE:112,SE:135,SSE:158,S:180,SSW:202,SW:225,WSW:248,W:270,WNW:292,NW:315,NNW:338};
+const NIFC_P='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0';
+const NIFC_P2='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/Current_WildlandFire_Perimeters/FeatureServer/0';
+const NIFC_I='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0';
+const NIFC_R='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/PublicView_RAWS/FeatureServer/1';
+
+const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,
+  windDeg:225,windSpd:15,moist:.10,mode:'single',probGrid:null,ignitions:[],
+  showPerim:true,showChar:true,showZone:true,showSmoke:true,showGchart:true,
+  vis:{perims:true,incs:true,raws:false,modis:false},
+  liveLayers:{},basemaps:{},curBm:'dark',map:null};
+
+const $=id=>document.getElementById(id);
+
+function boot(m){const e=$('bmsg');if(e)e.textContent=m;}
+function mkRNG(seed){let s=seed>>>0;return()=>{s+=0x6D2B79F5;let z=Math.imul(s^(s>>>15),s|1);z^=z+Math.imul(z^(z>>>7),z|61);return((z^(z>>>14))>>>0)/0x100000000;};}
+function noise2d(seed,w,h,p){const r=mkRNG(seed);let f=[];for(let y=0;y<h;y++){f[y]=[];for(let x=0;x<w;x++)f[y][x]=r();}for(let i=0;i<p;i++){const n=[];for(let y=0;y<h;y++){n[y]=[];for(let x=0;x<w;x++){let s=0,c=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){s+=f[Math.max(0,Math.min(h-1,y+dy))][Math.max(0,Math.min(w-1,x+dx))];c++;}n[y][x]=s/c;}}f=n;}return f;}
+function hashLL(lat,lng){const a=(lat*1e5)|0,b=(lng*1e5)|0;let h=(a^Math.imul(b,16807))>>>0;h=Math.imul(h^(h>>>16),0x85ebca6b);h=Math.imul(h^(h>>>13),0xc2b2ae35);return(h^(h>>>16))>>>0;}
+function fmtT(st){const m=st*5;return`T+${Math.floor(m/60)}h ${(m%60).toString().padStart(2,'0')}m`;}
+function fmtLL(la,ln){return`${Math.abs(la).toFixed(3)}°${la>=0?'N':'S'} ${Math.abs(ln).toFixed(3)}°${ln>=0?'E':'W'}`;}
+function fmtAc(c){return Math.round(c*(KM*1000/G)**2/4047);}
+function parseWS(s){if(!s||/calm/i.test(s))return 0;const m=s.match(/(\d+)(?:\s+to\s+(\d+))?/);return m?(m[2]?Math.round((+m[1]+ +m[2])/2):+m[1]):0;}
+
+function toast(msg,type='i',dur=3500){const t=document.createElement('div');t.className=`tst ${type}`;t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>{t.style.animation='fadeIn .3s ease reverse';setTimeout(()=>t.remove(),300);},dur);}
+
+function chip(id,txt,cls){const e=$(id);if(!e)return;e.textContent=txt;e.className=`chip ${cls}`;}
+
+// ── Terrain ────────────────────────────
+function buildTerrain(lat,lng){
+  const seed=hashLL(lat,lng);
+  const e1=noise2d(seed,G,G,7),e2=noise2d(seed^0x1F2E,G,G,2),vg=noise2d(seed^0xA5B6,G,G,4);
+  let mn=1,mx=0;const raw=[];
+  for(let y=0;y<G;y++){raw[y]=[];for(let x=0;x<G;x++){const v=.65*e1[y][x]+.35*e2[y][x];raw[y][x]=v;if(v<mn)mn=v;if(v>mx)mx=v;}}
+  const rng=mx-mn||1,lb=Math.max(0,Math.min(1,(Math.abs(lat)-30)/30));
+  const elev=raw.map(r=>r.map(v=>(v-mn)/rng));
+  const grid=[];
+  for(let y=0;y<G;y++){grid[y]=[];for(let x=0;x<G;x++){const e=elev[y][x],v=vg[y][x];let type,moist;
+    if(e>.86){type=T.ROCKY;moist=.05;}else if(e>.62-lb*.05){type=T.FOREST;moist=.22;}else if(e<.18){type=T.GRASS;moist=.08;}else if(v>(.55-lb*.12)){type=T.FOREST;moist=.20;}else{type=T.SHRUB;moist=.13;}
+    grid[y][x]={type,elev:elev[y][x],moist,fire:F.NONE,tick:0};}}
+  return{grid,elev};
+}
+
+// ── Simulation ────────────────────────
+function runSim(terrain,params,seed=31337){
+  const{windDeg,windSpd,moist:xm,ignPts}=params;
+  const wRad=((windDeg+180)%360)*Math.PI/180;const rng=mkRNG(seed);
+  let g=terrain.grid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28),fire:F.NONE,tick:0})));
+  for(const{gx,gy}of ignPts){for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(dx*dx+dy*dy>4)continue;const nx=gx+dx,ny=gy+dy;if(g[ny]?.[nx]&&g[ny][nx].type!==T.WATER)g[ny][nx]={...g[ny][nx],fire:F.FLAME,tick:0};}}
+  const snaps=[g.map(r=>r.map(c=>({...c})))];
+  for(let step=0;step<STP-1;step++){
+    const ng=g.map(r=>r.map(c=>({...c})));
+    for(let y=0;y<G;y++)for(let x=0;x<G;x++){
+      const c=g[y][x];
+      if(c.fire===F.FLAME){
+        const nt=c.tick+1;ng[y][x]={...c,tick:nt,fire:nt>=TP[c.type].dur?F.CHAR:F.FLAME};
+        for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||nx>=G||ny<0||ny>=G)continue;const nb=g[ny][nx];if(nb.fire!==F.NONE||TP[nb.type].ros===0)continue;
+          const sa=Math.atan2(dy,dx),wf=Math.exp(.065*windSpd*Math.cos(sa-wRad)),sf=Math.exp(4.2*(nb.elev-c.elev)),mf=Math.max(0,1-nb.moist*3.8),df=(Math.abs(dx)+Math.abs(dy)===2)?.707:1;
+          if(rng()<Math.min(.93,TP[nb.type].ros*wf*sf*mf*df*.30))ng[ny][nx]={...nb,fire:F.PRE,tick:0};}
+        // Ember spotting
+        if(rng()<.008*(1+windSpd/25)){
+          const dist=5+Math.floor(rng()*10),jx=(rng()-.5)*3,jy=(rng()-.5)*3;
+          const ex=Math.round(x+Math.sin(wRad)*dist+jx),ey=Math.round(y-Math.cos(wRad)*dist+jy);
+          if(ex>=0&&ex<G&&ey>=0&&ey<G){const em=g[ey][ex];if(em.fire===F.NONE&&TP[em.type].ros>0)ng[ey][ex]={...em,fire:F.PRE,tick:0};}
+        }
+      }else if(c.fire===F.PRE){const nt=c.tick+1;ng[y][x]={...c,tick:nt,fire:nt>=2?F.FLAME:F.PRE};}
+    }
+    g=ng;snaps.push(g.map(r=>r.map(c=>({...c}))));
+  }
+  return snaps;
+}
+
+function runEnsemble(terrain,params){
+  const acc=Array.from({length:G},()=>Array.from({length:G},()=>new Float32Array(STP)));
+  for(let r=0;r<ENS;r++){const pv={...params,moist:params.moist+(Math.random()-.5)*.05,windSpd:params.windSpd+(Math.random()-.5)*3};const snaps=runSim(terrain,pv,31337+r*7919);for(let s=0;s<STP;s++){const snap=snaps[s];for(let y=0;y<G;y++)for(let x=0;x<G;x++)if(snap[y][x].fire!==F.NONE)acc[y][x][s]+=1/ENS;}}
+  return acc;
+}
+
+// ── Bounds / grid coord helpers ────────
+function mkBounds(lat,lng){const hl=(KM/2)/111.32,hln=hl/Math.cos(lat*Math.PI/180);return{south:lat-hl,north:lat+hl,west:lng-hln,east:lng+hln};}
+function ll2g(lat,lng,b){return{gx:Math.max(0,Math.min(G-1,Math.round(((lng-b.west)/(b.east-b.west))*G))),gy:Math.max(0,Math.min(G-1,Math.round(((b.north-lat)/(b.north-b.south))*G)))};}
+
+// ── NWS weather ────────────────────────
+async function fetchNWS(lat,lng){
+  try{
+    const r=await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lng.toFixed(4)}`,{signal:AbortSignal.timeout(6000)});
+    if(!r.ok)throw new Error('NWS');const d=await r.json();const fu=d?.properties?.forecastHourly;if(!fu)throw new Error('no url');
+    const fr=await fetch(fu,{signal:AbortSignal.timeout(8000)});if(!fr.ok)throw new Error('NWS fc');
+    const fd=await fr.json();const p=fd?.properties?.periods?.[0];if(!p)throw new Error('no period');
+    const spd=parseWS(p.windSpeed),dir=CDEG[p.windDirection]??S.windDeg,tmp=p.temperature,hum=p.relativeHumidity?.value;
+    $('wcard').style.display='block';$('wcard-src').textContent=d.properties.gridId||'NWS';
+    $('ww-s').textContent=spd;$('ww-d').textContent=p.windDirection||'—';$('ww-t').textContent=tmp??'—';$('ww-h').textContent=hum!=null?Math.round(hum):'—';
+    $('nwsl').textContent=`NWS Auto · ${d.properties.gridId||''}`;$('s4').className='sdot';
+    S.windSpd=spd;S.windDeg=dir;
+    const mo=hum!=null?Math.round(hum/100*25):10;S.moist=mo/100;
+    setSlider('sl-wd','wdf','wdt','wdv',dir,v=>`${v}°`);
+    setSlider('sl-ws','wsf','wst','wsv',spd,v=>`${v} mph`);
+    setSlider('sl-mo','mof','mot','mov',mo,v=>`${v}%`);
+    toast(`NWS: ${spd} mph from ${p.windDirection}${tmp!=null?' · '+tmp+'°F':''}`,'o');
+    return true;
+  }catch(e){$('nwsl').textContent='Manual (NWS N/A)';$('s4').className='sdot e';return false;}
+}
+
+// ── Project ────────────────────────────
+function project(ll){
+  const{lat,lng}=ll;
+  const center=S.ignitions.length===0?ll:S.ignitions[0];
+  const bounds=mkBounds(center.lat||lat,center.lng||lng);
+  const marker=L.circleMarker(ll,{radius:7,color:'#FF1744',weight:2,fillColor:'#FFEB3B',fillOpacity:1}).addTo(S.map);
+  marker.bindPopup(`Ignition point<br><small>${fmtLL(lat,lng)}</small>`);
+  marker.on('contextmenu',()=>removeIgn(ll,marker));
+  S.ignitions.push({lat,lng,marker});
+  renderIgnList();
+  const terrain=buildTerrain(center.lat||lat,center.lng||lng);
+  const ignPts=S.ignitions.map(p=>({...ll2g(p.lat,p.lng,bounds)}));
+  const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts};
+  S.sim={terrain,bounds,center:{lat:center.lat||lat,lng:center.lng||lng},params};
+  if(S.mode==='prob'){toast(`Running ${ENS} ensemble simulations…`,'i',4000);setTimeout(()=>{S.probGrid=runEnsemble(terrain,params);S.sim.snapshots=runSim(terrain,params);afterProject();},60);}
+  else{S.sim.snapshots=runSim(terrain,params);S.probGrid=null;afterProject();}
+}
+
+function afterProject(){
+  S.step=0;enableTL();updateURL();
+  ['wind-ov','tbadge','zstats'].forEach(id=>$(id).style.display='flex');
+  $('wind-ov').style.display='flex';$('zstats').style.display='block';
+  if(S.showGchart){$('gchart').style.display='block';buildGChart();}
+  drawCompass(S.windDeg);updateUI();draw();
+  toast(`Projection ready · ${KM}km zone`,'o');
+}
+
+function removeIgn(ll,marker){S.map.removeLayer(marker);S.ignitions=S.ignitions.filter(p=>p.marker!==marker);renderIgnList();if(S.ignitions.length===0){S.sim=null;clearOv();disableTL();}else rerun();}
+
+function renderIgnList(){const el=$('ignlist');el.innerHTML='';S.ignitions.forEach((p,i)=>{const d=document.createElement('div');d.className='igni';d.innerHTML=`<span style="font-size:14px">🔥</span><div class="ii"><div>Ignition ${i+1}</div><small>${fmtLL(p.lat,p.lng)}</small></div><button class="irm" title="Remove">✕</button>`;d.querySelector('.irm').addEventListener('click',()=>removeIgn(p,p.marker));el.appendChild(d);});}
+
+function rerun(){if(!S.sim||!S.ignitions.length)return;const{bounds,terrain}=S.sim;const ignPts=S.ignitions.map(p=>({...ll2g(p.lat,p.lng,bounds)}));const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts};S.sim.params=params;S.sim.snapshots=runSim(terrain,params);if(S.mode==='prob')S.probGrid=runEnsemble(terrain,params);S.step=0;if(S.playing)stopPlay();buildGChart();drawCompass(S.windDeg);updateUI();draw();}
+
+// ── Canvas renderer ────────────────────
+function clearOv(){const cv=$('ov');if(!cv)return;cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
+function sizeOv(){const cv=$('ov'),m=S.map;if(!cv||!m)return 1;const sz=m.getSize(),dpr=Math.min(2,devicePixelRatio||1);cv.width=sz.x*dpr;cv.height=sz.y*dpr;cv.style.width=sz.x+'px';cv.style.height=sz.y+'px';return dpr;}
+
+function draw(){
+  const cv=$('ov');if(!cv||!S.map||!S.sim?.snapshots){clearOv();return;}
+  const dpr=sizeOv(),ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  const{bounds}=S.sim,snap=S.sim.snapshots[S.step],map=S.map;
+  const tl=map.latLngToContainerPoint([bounds.north,bounds.west]),br=map.latLngToContainerPoint([bounds.south,bounds.east]);
+  const zW=br.x-tl.x,zH=br.y-tl.y,cW=zW/G,cH=zH/G,mw=cv.width/dpr,mh=cv.height/dpr;
+  if(br.x<0||tl.x>mw||br.y<0||tl.y>mh)return;
+  // Probability mode
+  if(S.mode==='prob'&&S.probGrid){
+    for(let y=0;y<G;y++)for(let x=0;x<G;x++){const prob=S.probGrid[y][x][S.step];if(prob<.02)continue;const px=tl.x+x*cW,py=tl.y+y*cH;const g_=prob<.5?Math.round(235-prob*2*130):Math.round(105-Math.max(0,prob-.5)*2*105);ctx.fillStyle=`rgba(255,${g_},0,${Math.min(.9,prob*.9+.1)})`;ctx.fillRect(px,py,cW+.5,cH+.5);}
+    if(S.showPerim)drawPerim(ctx,snap,tl,cW,cH);drawIgnMks(ctx,map);if(S.showZone)drawZone(ctx,tl,zW,zH);return;
+  }
+  // Single mode
+  if(S.showZone)drawZone(ctx,tl,zW,zH);
+  for(let y=0;y<G;y++)for(let x=0;x<G;x++){const c=snap[y][x];if(c.fire===F.NONE)continue;const px=tl.x+x*cW,py=tl.y+y*cH;let r,g_,b,a;
+    if(c.fire===F.FLAME){const fk=.78+Math.random()*.22;r=Math.round(252*fk);g_=Math.round((42+Math.random()*105)*fk);b=0;a=.94;}
+    else if(c.fire===F.PRE){r=250;g_=130;b=20;a=.7;}
+    else if(c.fire===F.CHAR){if(!S.showChar)continue;r=22;g_=17;b=12;a=.88;}
+    ctx.fillStyle=`rgba(${r},${g_},${b},${a})`;ctx.fillRect(px,py,cW+.5,cH+.5);}
+  // Glow
+  for(let y=0;y<G;y++)for(let x=0;x<G;x++){if(snap[y][x].fire!==F.FLAME)continue;const px=tl.x+x*cW+cW/2,py=tl.y+y*cH+cH/2;const grd=ctx.createRadialGradient(px,py,0,px,py,cW*1.8);grd.addColorStop(0,'rgba(255,100,0,.32)');grd.addColorStop(1,'rgba(255,40,0,0)');ctx.fillStyle=grd;ctx.fillRect(px-cW*1.8,py-cH*1.8,cW*3.6,cH*3.6);}
+  // Smoke
+  if(S.showSmoke){ctx.save();ctx.globalCompositeOperation='lighter';for(let y=0;y<G;y++)for(let x=0;x<G;x++){if(snap[y][x].fire!==F.CHAR)continue;const d=Math.sin(S.ft*.07+x*.3+y*.2)*cW*.4,px=tl.x+x*cW+cW/2+d,py=tl.y+y*cH;const sg=ctx.createRadialGradient(px,py-cH,0,px,py,cW*2.2);sg.addColorStop(0,'rgba(80,80,90,.09)');sg.addColorStop(1,'rgba(50,50,60,0)');ctx.fillStyle=sg;ctx.fillRect(px-cW*2.2,py-cH*3,cW*4.4,cH*4);}ctx.restore();}
+  if(S.showPerim)drawPerim(ctx,snap,tl,cW,cH);
+  drawIgnMks(ctx,map);
+}
+
+function drawZone(ctx,tl,zW,zH){ctx.save();ctx.strokeStyle='rgba(255,142,0,.45)';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.strokeRect(tl.x,tl.y,zW,zH);ctx.setLineDash([]);ctx.strokeStyle='rgba(255,142,0,.75)';ctx.lineWidth=2;const tk=9;[[tl.x,tl.y,1,1],[tl.x+zW,tl.y,-1,1],[tl.x,tl.y+zH,1,-1],[tl.x+zW,tl.y+zH,-1,-1]].forEach(([x,y,dx,dy])=>{ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+tk*dx,y);ctx.moveTo(x,y);ctx.lineTo(x,y+tk*dy);ctx.stroke();});ctx.restore();}
+
+function drawPerim(ctx,snap,tl,cW,cH){ctx.strokeStyle='#FF6D00';ctx.lineWidth=2;ctx.setLineDash([5,3]);ctx.beginPath();for(let y=0;y<G;y++)for(let x=0;x<G;x++){if(snap[y][x].fire===F.NONE)continue;const px=tl.x+x*cW,py=tl.y+y*cH;if(x===G-1||snap[y][x+1].fire===F.NONE){ctx.moveTo(px+cW,py);ctx.lineTo(px+cW,py+cH);}if(x===0||snap[y][x-1].fire===F.NONE){ctx.moveTo(px,py);ctx.lineTo(px,py+cH);}if(y===G-1||snap[y+1][x].fire===F.NONE){ctx.moveTo(px,py+cH);ctx.lineTo(px+cW,py+cH);}if(y===0||snap[y-1][x].fire===F.NONE){ctx.moveTo(px,py);ctx.lineTo(px+cW,py);}}ctx.stroke();ctx.setLineDash([]);}
+
+function drawIgnMks(ctx,map){S.ignitions.forEach(p=>{const ip=map.latLngToContainerPoint([p.lat,p.lng]);ctx.save();ctx.shadowColor='#FF1744';ctx.shadowBlur=12;ctx.fillStyle='#FFEB3B';ctx.strokeStyle='#FF1744';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(ip.x,ip.y,7,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.strokeStyle='#7B3F00';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(ip.x-5,ip.y-5);ctx.lineTo(ip.x+5,ip.y+5);ctx.moveTo(ip.x+5,ip.y-5);ctx.lineTo(ip.x-5,ip.y+5);ctx.stroke();ctx.restore();});}
+
+// ── Growth chart ───────────────────────
+function buildGChart(){
+  if(!S.sim?.snapshots)return;const W=240,H=52;
+  const data=S.sim.snapshots.map(snap=>{let n=0;snap.forEach(r=>r.forEach(c=>{if(c.fire!==F.NONE)n++;}));return n;});
+  const mx=Math.max(...data,1);const pts=data.map((v,i)=>`${(i/(data.length-1))*W},${H-4-(v/mx)*(H-12)}`).join(' ');
+  $('gsvg').innerHTML=`<defs><linearGradient id="gg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF6D00" stop-opacity=".3"/><stop offset="100%" stop-color="#FF6D00" stop-opacity="0"/></linearGradient></defs><rect width="${W}" height="${H}" fill="#060F18" rx="8"/><polygon points="0,${H} ${pts} ${W},${H}" fill="url(#gg)"/><polyline points="${pts}" fill="none" stroke="#FF6D00" stroke-width="1.8" stroke-linejoin="round"/><line id="gm" x1="0" y1="4" x2="0" y2="${H-4}" stroke="#FFEB3B" stroke-width="1" stroke-dasharray="3,2" opacity=".8"/><text x="3" y="${H-2}" font-size="7.5" fill="#37474F" font-family="monospace">T+0h</text><text x="${W-3}" y="${H-2}" font-size="7.5" fill="#37474F" font-family="monospace" text-anchor="end">T+6h</text><text x="${W-3}" y="9" font-size="7.5" fill="#546E7A" font-family="monospace" text-anchor="end">${mx} peak</text>`;
+}
+function updGM(){const m=$('gm');if(!m)return;const x=(S.step/(STP-1))*240;m.setAttribute('x1',x);m.setAttribute('x2',x);}
+
+// ── Compass ────────────────────────────
+function drawCompass(deg){
+  const svg=$('cmp');if(!svg)return;const cx=32,cy=32,r=22;const sd=(deg+180)%360,rad=(sd-90)*Math.PI/180,ax=cx+r*.85*Math.cos(rad),ay=cy+r*.85*Math.sin(rad);
+  let h=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1E3A4A" stroke-width="1.5"/><circle cx="${cx}" cy="${cy}" r="${r-6}" fill="none" stroke="#0D2535" stroke-width=".5"/>`;
+  for(const[d,a]of[['N',0],['E',90],['S',180],['W',270]]){const dr=(a-90)*Math.PI/180,tx=cx+(r+8)*Math.cos(dr),ty=cy+(r+8)*Math.sin(dr)+1;h+=`<text x="${tx}" y="${ty}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="700" fill="${d==='N'?'#EF5350':'#4A6FA5'}" font-family="monospace">${d}</text>`;}
+  for(let i=0;i<12;i++){const a=(i*30-90)*Math.PI/180,r1=r-2,r2=i%3===0?r-7:r-5;h+=`<line x1="${cx+r1*Math.cos(a)}" y1="${cy+r1*Math.sin(a)}" x2="${cx+r2*Math.cos(a)}" y2="${cy+r2*Math.sin(a)}" stroke="#1E3A4A" stroke-width="${i%3===0?1.5:.8}"/>`;}
+  const ax2=ax+4*Math.cos(rad+Math.PI*.75),ay2=ay+4*Math.sin(rad+Math.PI*.75),ax3=ax+4*Math.cos(rad-Math.PI*.75),ay3=ay+4*Math.sin(rad-Math.PI*.75);
+  h+=`<line x1="${cx}" y1="${cy}" x2="${ax}" y2="${ay}" stroke="#FF6D00" stroke-width="2.5" stroke-linecap="round"/><polygon points="${ax},${ay} ${ax2},${ay2} ${ax3},${ay3}" fill="#FF6D00"/><line x1="${cx}" y1="${cy}" x2="${cx-r*.4*Math.cos(rad)}" y2="${cy-r*.4*Math.sin(rad)}" stroke="#546E7A" stroke-width="1" stroke-dasharray="2,2"/><circle cx="${cx}" cy="${cy}" r="3.5" fill="#E8EAED"/><circle cx="${cx}" cy="${cy}" r="1.5" fill="#0D2535"/>`;
+  svg.innerHTML=h;
+}
+
+// ── UI update ──────────────────────────
+function updateUI(){
+  const pct=(S.step/(STP-1))*100;$('tbf').style.width=pct+'%';$('tbt').style.left=`calc(${pct}% - 8px)`;$('tslider').value=S.step;const tl=fmtT(S.step);$('tdsp').textContent=tl;$('tb-t').textContent=tl;$('wread').textContent=`${S.windSpd} mph @ ${S.windDeg}°`;updGM();
+  if(S.sim?.snapshots){const snap=S.sim.snapshots[S.step];let fl=0,ch=0,pre=0;snap.forEach(r=>r.forEach(c=>{if(c.fire===F.FLAME)fl++;else if(c.fire===F.PRE)pre++;else if(c.fire===F.CHAR)ch++;}));const tot=fl+ch+pre,ac=fmtAc(tot),pz=Math.round(tot/(G*G)*100);$('zbar').style.cssText=`height:100%;width:${pz}%;background:linear-gradient(90deg,var(--pb),var(--err));transition:width .3s`;$('zpct').textContent=`${pz}% of zone`;$('zac').textContent=`~${ac} acres · ${fl} flame`;
+  const threat=fl>250?'CRITICAL':fl>100?'HIGH':fl>30?'MODERATE':fl>0?'LOW':'STANDBY';const tc={CRITICAL:'err',HIGH:'pri',MODERATE:'wrn',LOW:'ok',STANDBY:'dim'}[threat];chip('c-zone',`⚡ ${threat} · ${tl}`,tc);
+  const threatClr={CRITICAL:'#F44336',HIGH:'#FF6D00',MODERATE:'#FFA726',LOW:'#FFEE58',STANDBY:'#66BB6A'}[threat];
+  $('pstats').innerHTML=`<div class="srow"><span>Active flame</span><span style="color:#FF6D00">${fl}</span></div><div class="srow"><span>Pre-ignition</span><span style="color:#FFA726">${pre}</span></div><div class="srow"><span>Charred</span><span style="color:#795548">${ch}</span></div><div class="srow"><span>Est. acres</span><span style="color:#FF8F00">~${ac}</span></div><div class="srow"><span>Zone</span><span>${pz}%</span></div><div class="srow"><span>Threat</span><span style="color:${threatClr}">${threat}</span></div><div class="srow"><span>Wind</span><span>${S.windSpd} mph · ${S.windDeg}°</span></div><div class="srow"><span>Time</span><span>${tl}</span></div>`;}
+}
+
+// ── Slider helper ──────────────────────
+function setSlider(sid,fid,tid,vid,val,fmt){const sl=$(sid);if(!sl)return;sl.value=val;const p=((val-+sl.min)/(+sl.max-+sl.min))*100;$(fid).style.width=p+'%';$(tid).style.left=`calc(${p}% - 7px)`;$(vid).textContent=fmt(val);}
+function bindSlider(sid,fid,tid,vid,fmt,cb){const sl=$(sid);if(!sl)return;const u=()=>{const v=+sl.value,p=((v-+sl.min)/(+sl.max-+sl.min))*100;$(fid).style.width=p+'%';$(tid).style.left=`calc(${p}% - 7px)`;$(vid).textContent=fmt(v);cb(v);};sl.addEventListener('input',u);u();}
+
+// ── Playback ───────────────────────────
+function stopPlay(){S.playing=false;if(S.playTimer)clearInterval(S.playTimer);S.playTimer=null;$('b-pl').textContent='▶';$('b-pl').classList.remove('pl');}
+function togglePlay(){if(!S.sim)return;S.playing=!S.playing;if(S.playing){$('b-pl').textContent='⏸';$('b-pl').classList.add('pl');S.playTimer=setInterval(()=>{if(S.step>=STP-1){stopPlay();return;}S.step++;updateUI();draw();},S.playMs);}else stopPlay();}
+function enableTL(){['b-rw','b-sb','b-pl','b-sf','b-ff','tslider'].forEach(id=>$(id).disabled=false);$('tbar').classList.remove('off');['e-gj','e-csv'].forEach(id=>$(id).disabled=false);}
+function disableTL(){['b-rw','b-sb','b-pl','b-sf','b-ff','tslider'].forEach(id=>$(id).disabled=true);$('tbar').classList.add('off');['e-gj','e-csv'].forEach(id=>$(id).disabled=true);}
+
+// ── URL state ──────────────────────────
+function updateURL(){if(!S.sim||!S.ignitions.length)return;const p=S.ignitions[0];const h=`#lat=${p.lat.toFixed(5)}&lng=${p.lng.toFixed(5)}&wd=${S.windDeg}&ws=${S.windSpd}&mo=${Math.round(S.moist*100)}`;history.replaceState(null,'',h);const ud=$('urld');if(ud){ud.style.display='block';ud.textContent=location.href;}}
+function restoreURL(){const h=location.hash.slice(1);if(!h)return;const p=Object.fromEntries(h.split('&').map(s=>s.split('=')));if(p.lat&&p.lng){if(p.wd){S.windDeg=+p.wd;setSlider('sl-wd','wdf','wdt','wdv',+p.wd,v=>`${v}°`);}if(p.ws){S.windSpd=+p.ws;setSlider('sl-ws','wsf','wst','wsv',+p.ws,v=>`${v} mph`);}if(p.mo){S.moist=+p.mo/100;setSlider('sl-mo','mof','mot','mov',+p.mo,v=>`${v}%`);}setTimeout(()=>project({lat:+p.lat,lng:+p.lng}),900);}}
+
+// ── Export ─────────────────────────────
+function exportGJ(){if(!S.sim?.snapshots)return;const snap=S.sim.snapshots[S.step],{bounds}=S.sim;const ls=bounds.north-bounds.south,lg=bounds.east-bounds.west,cl=ls/G,cg=lg/G,coords=[];for(let y=0;y<G;y++)for(let x=0;x<G;x++){if(snap[y][x].fire===F.NONE)continue;const la1=bounds.north-y*cl,lo1=bounds.west+x*cg,la2=bounds.north-(y+1)*cl,lo2=bounds.west+(x+1)*cg;coords.push([[lo1,la1],[lo2,la1],[lo2,la2],[lo1,la2],[lo1,la1]]);}const gj={type:'FeatureCollection',features:[{type:'Feature',properties:{timestamp:fmtT(S.step),windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist},geometry:{type:'MultiPolygon',coordinates:coords.map(c=>[c])}}]};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(gj)],{type:'application/geo+json'}));a.download=`firesim_${fmtT(S.step).replace(/[^a-z0-9]/gi,'_')}.geojson`;a.click();}
+function exportCSV(){if(!S.sim?.snapshots)return;let csv='step,time_min,flame,char,acres\n';S.sim.snapshots.forEach((snap,i)=>{let fl=0,ch=0;snap.forEach(r=>r.forEach(c=>{if(c.fire===F.FLAME||c.fire===F.PRE)fl++;if(c.fire===F.CHAR)ch++;}));csv+=`${i},${i*5},${fl},${ch},${fmtAc(fl+ch)}\n`;});const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='firesim_timeseries.csv';a.click();}
+
+// ── Live data layers ───────────────────
+function setupLayers(){const m=S.map;
+  S.liveLayers.perims=L.esri.featureLayer({url:NIFC_P,simplifyFactor:.3,style:()=>({color:'#FFEB3B',weight:1.5,fillColor:'#FFEB3B',fillOpacity:.15}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<b>${p.poly_IncidentName||p.IncidentName||'Unknown'}</b><br><small>~${Math.round(p.poly_GISAcres||p.GISAcres||0).toLocaleString()} acres</small>`);}});
+  S.liveLayers.perims.on('load',()=>{$('s0').className='sdot';chip('c-data','🌐 Live · NIFC','ok');});
+  S.liveLayers.perims.on('requesterror',()=>{$('s0').className='sdot e';S.liveLayers.perims2=L.esri.featureLayer({url:NIFC_P2,simplifyFactor:.3,style:()=>({color:'#FFEB3B',weight:1.5,fillOpacity:.15})});if(S.vis.perims)S.liveLayers.perims2.addTo(m);});
+  S.liveLayers.incs=L.esri.featureLayer({url:NIFC_I,pointToLayer:(gj,ll)=>{const sz=gj.properties.IncidentSize||0,rad=Math.max(5,Math.min(20,5+Math.log10(Math.max(1,sz))*2.5));return L.circleMarker(ll,{radius:rad,color:'#FF1744',weight:2,fillColor:'#FF6D00',fillOpacity:.45});},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<b>${p.IncidentName||'Unknown'}</b><br><small>${Math.round(p.IncidentSize||0).toLocaleString()} acres${p.PercentContained!=null?` · ${p.PercentContained}% cont.`:''}</small>`);}});
+  S.liveLayers.incs.on('load',()=>{$('s1').className='sdot';queryStats();});
+  S.liveLayers.incs.on('requesterror',()=>{$('s1').className='sdot e';chip('c-data','⚠ NIFC offline','err');});
+  S.liveLayers.raws=L.esri.featureLayer({url:NIFC_R,pointToLayer:(gj,ll)=>L.circleMarker(ll,{radius:4,color:'#42A5F5',weight:1.5,fillColor:'#42A5F5',fillOpacity:.7}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindPopup(`<b>${p.StationName||'RAWS'}</b><br><small>${p.NWSID||''}</small>`);}});
+  const md=new Date(Date.now()-24*36e5).toISOString().split('T')[0];
+  S.liveLayers.modis=L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Thermal_Anomalies_All/default/${md}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.png`,{attribution:'NASA GIBS',maxNativeZoom:9,maxZoom:18,opacity:.85});
+  if(S.vis.perims)S.liveLayers.perims.addTo(m);
+  if(S.vis.incs)S.liveLayers.incs.addTo(m);
+}
+
+function queryStats(){L.esri.query({url:NIFC_I}).where('IncidentSize >= 0').returnGeometry(false).fields(['IncidentName','IncidentSize','PercentContained']).run((err,fc)=>{if(err||!fc)return;const feats=fc.features||[];let tot=0,big={name:'',size:0,cnt:null};for(const f of feats){const sz=+f.properties.IncidentSize||0;tot+=sz;if(sz>big.size)big={name:f.properties.IncidentName,size:sz,cnt:f.properties.PercentContained};}const cnt=feats.length;$('ds-f').textContent=cnt.toLocaleString();$('ds-a').textContent=Math.round(tot).toLocaleString();$('ds-b').textContent=big.name||'—';$('ds-bs').textContent=big.name?`${Math.round(big.size).toLocaleString()} acres${big.cnt!=null?` · ${big.cnt}% cont.`:''}` :'';chip('c-fires',`🔥 ${cnt} active US fires`,'pri');chip('c-acres',`📐 ${(tot/1000).toFixed(0)}k acres`,'ok');});}
+
+function searchFire(term){if(!term?.trim())return;const safe=term.toUpperCase().replace(/'/g,"''");L.esri.query({url:NIFC_P}).where(`UPPER(IncidentName) LIKE '%${safe}%' OR UPPER(poly_IncidentName) LIKE '%${safe}%'`).returnGeometry(true).limit(5).run((err,fc)=>{if(err||!fc?.features?.length){toast(`No fire found for "${term}"`,'e');return;}const first=fc.features[0];const hl=L.geoJSON(first,{style:{color:'#FF1744',weight:4,fill:false}}).addTo(S.map);S.map.fitBounds(hl.getBounds().pad(.2));setTimeout(()=>S.map.removeLayer(hl),6000);toast(`Found: ${first.properties.IncidentName||term}`,'o');});}
+
+// ── Map init ───────────────────────────
+function initMap(){
+  boot('Loading map tiles…');
+  S.map=L.map('map',{center:[39.5,-111],zoom:5,minZoom:3,maxZoom:17,zoomControl:false,preferCanvas:true});
+  L.control.zoom({position:'topright'}).addTo(S.map);$('s5').className='sdot';
+  S.basemaps.dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19});
+  S.basemaps.terrain=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:18});
+  S.basemaps.satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:18});
+  S.basemaps.street=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19});
+  S.basemaps[S.curBm].addTo(S.map);
+  S.map.on('click',async e=>{if(e.originalEvent.target.closest('.leaflet-popup'))return;fetchNWS(e.latlng.lat,e.latlng.lng).then(ok=>{if(ok&&S.sim)rerun();});project(e.latlng);});
+  S.map.on('move zoom resize',()=>{sizeOv();draw();});
+  S.map.on('moveend zoomend',()=>draw());
+  setupLayers();boot('Connecting to NIFC…');
+}
+
+// ── UI bindings ────────────────────────
+function bindUI(){
+  $('menu-btn').addEventListener('click',()=>{$('side').classList.toggle('col');setTimeout(()=>{S.map?.invalidateSize();draw();},300);});
+  document.querySelectorAll('.tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));tab.classList.add('on');$(`t-${tab.dataset.t}`).classList.add('on');});});
+  $('mb-single').addEventListener('click',()=>{S.mode='single';S.probGrid=null;$('mb-single').classList.add('on');$('mb-prob').classList.remove('on','prob');$('prob-leg').style.display='none';chip('c-mode','📊 Single run','dim');if(S.sim)rerun();});
+  $('mb-prob').addEventListener('click',()=>{S.mode='prob';$('mb-prob').classList.add('on','prob');$('mb-single').classList.remove('on');$('prob-leg').style.display='block';chip('c-mode','📊 Ensemble ×15','inf');if(S.sim)rerun();});
+  bindSlider('sl-wd','wdf','wdt','wdv',v=>`${v}°`,v=>{S.windDeg=v;drawCompass(v);if(S.sim)rerun();});
+  bindSlider('sl-ws','wsf','wst','wsv',v=>`${v} mph`,v=>{S.windSpd=v;if(S.sim)rerun();});
+  bindSlider('sl-mo','mof','mot','mov',v=>`${v}%`,v=>{S.moist=v/100;if(S.sim)rerun();});
+  $('tslider').addEventListener('input',e=>{if(S.playing)stopPlay();S.step=+e.target.value;updateUI();draw();});
+  $('b-rw').addEventListener('click',()=>{if(!S.sim)return;stopPlay();S.step=0;updateUI();draw();});
+  $('b-sb').addEventListener('click',()=>{if(!S.sim)return;stopPlay();S.step=Math.max(0,S.step-1);updateUI();draw();});
+  $('b-sf').addEventListener('click',()=>{if(!S.sim)return;stopPlay();S.step=Math.min(STP-1,S.step+1);updateUI();draw();});
+  $('b-ff').addEventListener('click',()=>{if(!S.sim)return;stopPlay();S.step=STP-1;updateUI();draw();});
+  $('b-pl').addEventListener('click',togglePlay);
+  document.querySelectorAll('.spdb').forEach(b=>{b.addEventListener('click',()=>{document.querySelectorAll('.spdb').forEach(x=>x.classList.remove('on'));b.classList.add('on');S.playMs=+b.dataset.ms;if(S.playing){stopPlay();togglePlay();}});});
+  document.querySelectorAll('[data-lay]').forEach(row=>{row.addEventListener('click',()=>{const k=row.dataset.lay,tog=$(`tog-${k}`);tog.classList.toggle('on');const on=tog.classList.contains('on');S.vis[k]=on;const lay=S.liveLayers[k];if(lay){if(on)lay.addTo(S.map);else S.map.removeLayer(lay);}});});
+  document.querySelectorAll('[data-disp]').forEach(row=>{row.addEventListener('click',()=>{const k=row.dataset.disp,tog=$(`tog-${k}`);tog.classList.toggle('on');const on=tog.classList.contains('on');if(k==='perim')S.showPerim=on;if(k==='char')S.showChar=on;if(k==='zone')S.showZone=on;if(k==='smoke')S.showSmoke=on;if(k==='gchart'){S.showGchart=on;$('gchart').style.display=on&&S.sim?'block':'none';}draw();});});
+  document.querySelectorAll('[data-bm]').forEach(b=>{b.addEventListener('click',()=>{const k=b.dataset.bm;if(k===S.curBm)return;S.map.removeLayer(S.basemaps[S.curBm]);S.basemaps[k].addTo(S.map);S.curBm=k;document.querySelectorAll('[data-bm]').forEach(x=>x.classList.remove('on'));b.classList.add('on');});});
+  $('sbtn').addEventListener('click',()=>searchFire($('sinp').value));
+  $('sinp').addEventListener('keydown',e=>{if(e.key==='Enter')searchFire(e.target.value);});
+  $('e-gj').addEventListener('click',exportGJ);$('e-csv').addEventListener('click',exportCSV);
+  $('e-share').addEventListener('click',()=>{navigator.clipboard?.writeText(location.href).then(()=>toast('Link copied!','o')).catch(()=>toast(location.href,'i',8000));});
+  setInterval(()=>{S.ft++;if(S.sim&&!S.playing)draw();},140);
+}
+
+window.addEventListener('load',()=>{boot('Binding UI…');bindUI();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
+window.addEventListener('resize',()=>{S.map?.invalidateSize();sizeOv();draw();});
+</script>
+</body>
+</html>
