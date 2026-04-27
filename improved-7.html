@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<!--
+  Wildfire Tracker — Modern fire simulation with live data overlays
+
+  This page extends the earlier simulation by adopting a richer layout inspired
+  by Material Design and adding hooks for real‑time data.  A dark app bar
+  presents the title and fire status chips, a persistent side panel hosts
+  environmental controls and layer toggles, and a bottom timeline panel
+  controls playback through the projected fire evolution.  A Leaflet map
+  covers the remaining space and supports an optional NASA FIRMS hotspot
+  overlay (requires user‑supplied API key).  First responder positions are
+  drawn as marker icons and can be toggled on or off.  The simulation uses a
+  cellular automaton informed by wind direction and fuel type; predictions
+  for the next few hours fade in ahead of the active burn.  To integrate
+  live data, define FIRMS_MAP_KEY below with your NASA map key.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wildfire Tracker</title>
+  <!-- Leaflet styles -->
+  <!--
+    Pull Leaflet directly from unpkg.com.  In many environments this CDN
+    remains accessible when other mirrors are blocked.  We omit integrity
+    checks to avoid CSP restrictions that may interfere with loading.
+  -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <!-- Roboto font -->
+  <link
+    href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      /* Material palette */
+      --primary: #bb86fc;
+      --on-primary: #000;
+      --surface: #121212;
+      --on-surface: #fff;
+      --panel: #1e1e1e;
+      --chip-bg: #2a2a2a;
+      --chip-fg: #f5f5f5;
+      --accent: #03dac6;
+    }
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      font-family: 'Roboto', sans-serif;
+      background: var(--surface);
+      color: var(--on-surface);
+      overflow: hidden;
+    }
+    /* Layout containers */
+    #appBar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+    }
+    #appTitle {
+      font-size: 20px;
+      font-weight: 500;
+    }
+    #chipContainer {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Icon button in the app bar for collapsing the side panel */
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      margin-right: 12px;
+      border: none;
+      background: transparent;
+      color: var(--on-surface);
+      font-size: 24px;
+      cursor: pointer;
+    }
+    .chip {
+      padding: 4px 8px;
+      background: var(--chip-bg);
+      color: var(--chip-fg);
+      border-radius: 12px;
+      font-size: 12px;
+    }
+    #sidePanel {
+      position: absolute;
+      top: 56px;
+      bottom: 80px;
+      left: 0;
+      width: 260px;
+      background: var(--panel);
+      box-shadow: 2px 0 4px rgba(0, 0, 0, 0.5);
+      padding: 16px;
+      overflow-y: auto;
+      z-index: 900;
+    }
+    #sidePanel h2 {
+      margin-top: 0;
+      font-size: 18px;
+      margin-bottom: 12px;
+      color: var(--primary);
+    }
+    .control-item {
+      margin-bottom: 16px;
+    }
+    .control-item label {
+      font-size: 13px;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .control-item input[type='range'] {
+      width: 100%;
+      height: 4px;
+      background: #444;
+      border-radius: 2px;
+      -webkit-appearance: none;
+    }
+    .control-item input[type='range']::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--on-surface);
+      cursor: pointer;
+      margin-top: -5px;
+    }
+    .control-item input[type='range']::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--on-surface);
+      cursor: pointer;
+    }
+    .control-item button {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      background: var(--primary);
+      color: var(--on-surface);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+    }
+    .toggle input {
+      margin-right: 8px;
+    }
+    #map {
+      position: absolute;
+      top: 56px;
+      bottom: 80px;
+      left: 260px;
+      right: 0;
+      z-index: 0;
+    }
+    #fireCanvas {
+      position: absolute;
+      top: 56px;
+      bottom: 80px;
+      left: 260px;
+      right: 0;
+      pointer-events: none;
+      z-index: 400;
+    }
+    #timelinePanel {
+      position: absolute;
+      left: 260px;
+      right: 0;
+      bottom: 0;
+      height: 80px;
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.5);
+      z-index: 900;
+    }
+    #playBtn {
+      width: 60px;
+      height: 32px;
+      margin-right: 12px;
+      border: none;
+      border-radius: 4px;
+      background: var(--primary);
+      color: var(--on-surface);
+      cursor: pointer;
+    }
+    #timeSlider {
+      flex: 1;
+    }
+    #timeLabel {
+      width: 60px;
+      text-align: right;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header id="appBar">
+    <!-- Hamburger button to collapse/expand the side panel -->
+    <button id="togglePanel" class="icon-button" aria-label="Toggle controls">&#9776;</button>
+    <div id="appTitle">Wildfire Tracker</div>
+    <div id="chipContainer">
+      <div class="chip" id="chipActive">Active: 0</div>
+      <div class="chip" id="chipBurning">Burning: 0 acres</div>
+      <div class="chip" id="chipBurned">Burned: 0 acres</div>
+    </div>
+  </header>
+  <aside id="sidePanel">
+    <div class="control-item">
+      <label for="searchFire">Search fire</label>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input
+          id="searchFire"
+          type="text"
+          placeholder="Enter fire name"
+          style="flex: 1; padding: 6px; background: #2a2a2a; color: var(--on-surface); border: 1px solid #444; border-radius: 4px; font-size: 13px;"
+        />
+        <button
+          id="searchBtn"
+          style="padding: 6px 10px; background: var(--primary); color: var(--on-surface); border: none; border-radius: 4px; cursor: pointer; font-size: 13px;"
+        >Search</button>
+      </div>
+    </div>
+    <h2>Controls</h2>
+    <div class="control-item">
+      <label for="windDir">Wind direction (°)</label>
+      <input type="range" id="windDir" min="0" max="360" value="0" />
+    </div>
+    <div class="control-item toggle">
+      <input type="checkbox" id="toggleHotspots" />
+      <label for="toggleHotspots">NASA Hotspots</label>
+    </div>
+    <div class="control-item toggle">
+      <input type="checkbox" id="toggleResponders" checked />
+      <label for="toggleResponders">First Responders</label>
+    </div>
+    <div class="control-item toggle">
+      <input type="checkbox" id="togglePerimeters" checked />
+      <label for="togglePerimeters">Active Perimeters</label>
+    </div>
+    <div class="control-item toggle">
+      <input type="checkbox" id="toggleRAWS" />
+      <label for="toggleRAWS">Weather Stations (RAWS)</label>
+    </div>
+    <div class="control-item toggle">
+      <input type="checkbox" id="togglePrescribed" />
+      <label for="togglePrescribed">Prescribed Burns (Watch Duty)</label>
+    </div>
+    <div class="control-item">
+      <button id="rerunBtn">Regenerate Simulation</button>
+    </div>
+    <p style="font-size: 11px; line-height: 1.3; color: #888">
+      To view live satellite hotspots, obtain a free map key from NASA FIRMS and
+      set the <code>FIRMS_MAP_KEY</code> constant in the script below.  The
+      first responder layer is currently simulated with randomly placed icons.
+    </p>
+  </aside>
+  <div id="map"></div>
+  <canvas id="fireCanvas"></canvas>
+  <footer id="timelinePanel">
+    <button id="playBtn">Play</button>
+    <input type="range" id="timeSlider" min="0" max="48" value="0" />
+    <span id="timeLabel">0 h</span>
+  </footer>
+  <!-- Leaflet library -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  ></script>
+  <!-- Esri Leaflet for ArcGIS layers (must be loaded after Leaflet) -->
+  <script
+    src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"
+  ></script>
+  <script>
+    (function () {
+      /*
+       * Capture and display any JavaScript errors to aid debugging.
+       *
+       * This handler was originally implemented to expose script errors
+       * (such as missing Leaflet libraries) directly on the page.  In
+       * restricted environments the map tile fetches can generate
+       * 403/404 errors which are harmless to the simulation but would
+       * clutter the UI.  To avoid overlaying spurious network errors,
+       * we only report errors that carry an Error object.  If the
+       * handler receives a generic event (err is undefined), it simply
+       * returns without modifying the DOM.  Developers can still view
+       * network issues via the console.
+       */
+      window.onerror = function (msg, src, line, col, err) {
+        if (!err) return;
+        const el = document.createElement('pre');
+        el.textContent = 'Error: ' + msg + ' at ' + line + ':' + col;
+        el.style.position = 'absolute';
+        el.style.top = '60px';
+        el.style.left = '280px';
+        el.style.color = '#f44336';
+        el.style.background = '#1e1e1e';
+        el.style.padding = '4px';
+        el.style.zIndex = 2000;
+        document.body.appendChild(el);
+      };
+      // --- Configuration ---
+      // Bounding box for the simulation (Wolf Trap, VA)
+      const latMin = 38.93;
+      const latMax = 38.95;
+      const lonMin = -77.28;
+      const lonMax = -77.25;
+      const rows = 80;
+      const cols = 80;
+      const maxTime = 48;
+      // Provide your FIRMS map key here to enable NASA hotspot overlay.
+      const FIRMS_MAP_KEY = '';
+      // Default FIRMS layer name.  Use VIIRS fires for the last 24 hours.
+      const FIRMS_LAYER = 'fires_viirs_24';
+      // ArcGIS REST services for live data
+      const PERIMETER_URL =
+        'https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/Current_WildlandFire_Perimeters/FeatureServer/0';
+      const RAWS_URL =
+        'https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/PublicView_RAWS/FeatureServer/1';
+      // Watch Duty prescribed burn aggregation layer (public; educational use only)
+      const PRESCRIBED_URL =
+        'https://services5.arcgis.com/VNhSlpl1umSknM3q/arcgis/rest/services/Watch_Duty_Prescribed_Fires/FeatureServer/0';
+      // Fuel probabilities and burn durations.
+      const baseProb = {
+        grass: 0.25,
+        shrub: 0.32,
+        timber: 0.18,
+        urban: 0.08,
+      };
+      const burnDur = {
+        grass: 2,
+        shrub: 3,
+        timber: 4,
+        urban: 3,
+      };
+      // DOM references
+      const windDirInput = document.getElementById('windDir');
+      const toggleHotspots = document.getElementById('toggleHotspots');
+      const toggleResponders = document.getElementById('toggleResponders');
+      const togglePerimeters = document.getElementById('togglePerimeters');
+      const toggleRAWS = document.getElementById('toggleRAWS');
+      const togglePrescribed = document.getElementById('togglePrescribed');
+      const rerunBtn = document.getElementById('rerunBtn');
+      const playBtn = document.getElementById('playBtn');
+      const timeSlider = document.getElementById('timeSlider');
+      const timeLabel = document.getElementById('timeLabel');
+      const chipActive = document.getElementById('chipActive');
+      const chipBurning = document.getElementById('chipBurning');
+      const chipBurned = document.getElementById('chipBurned');
+
+      // Toggle for collapsing the side panel
+      const togglePanelBtn = document.getElementById('togglePanel');
+      // Search fire controls
+      const searchInput = document.getElementById('searchFire');
+      const searchBtn = document.getElementById('searchBtn');
+      let panelCollapsed = false;
+      togglePanelBtn.addEventListener('click', () => {
+        panelCollapsed = !panelCollapsed;
+        sidePanel.style.display = panelCollapsed ? 'none' : 'block';
+        // adjust map and overlay offsets when the panel is hidden or shown
+        const offset = panelCollapsed ? 0 : 260;
+        document.getElementById('map').style.left = offset + 'px';
+        document.getElementById('fireCanvas').style.left = offset + 'px';
+        document.getElementById('timelinePanel').style.left = offset + 'px';
+        // trigger map resize so Leaflet recalculates bounds
+        if (typeof map !== 'undefined') {
+          map.invalidateSize();
+        }
+      });
+      // Simulation state
+      let fuelMap;
+      let reachTime;
+      let burnEndTime;
+      let cellArea;
+      let map, fireCanvas, ctx;
+      let responderLayer;
+      let hotspotLayer;
+      let perimeterLayer;
+      let rawsLayer;
+      let prescribedLayer;
+      let playing = false;
+      let intervalId;
+      // Helper: determine fuel type by radial bands
+      function fuelAt(r, c) {
+        const dr = Math.abs(r - rows / 2) / (rows / 2);
+        const dc = Math.abs(c - cols / 2) / (cols / 2);
+        const d = Math.max(dr, dc);
+        if (d < 0.15) return 'urban';
+        if (d < 0.3) return 'timber';
+        if (d < 0.5) return 'shrub';
+        return 'grass';
+      }
+      // Neighbour directions and their angles (0° = north)
+      const neighDirs = [
+        { dr: -1, dc: 0, angle: 0 },
+        { dr: -1, dc: 1, angle: 45 * Math.PI / 180 },
+        { dr: 0, dc: 1, angle: 90 * Math.PI / 180 },
+        { dr: 1, dc: 1, angle: 135 * Math.PI / 180 },
+        { dr: 1, dc: 0, angle: 180 * Math.PI / 180 },
+        { dr: 1, dc: -1, angle: 225 * Math.PI / 180 },
+        { dr: 0, dc: -1, angle: 270 * Math.PI / 180 },
+        { dr: -1, dc: -1, angle: 315 * Math.PI / 180 },
+      ];
+      // Map initialisation
+      function initMap() {
+        map = L.map('map', {
+          center: [(latMin + latMax) / 2, (lonMin + lonMax) / 2],
+          zoom: 15,
+          minZoom: 11,
+          maxZoom: 18,
+        });
+        // Base map: use CartoDB light tiles for improved accessibility.  The
+        // CartoDB basemap is accessible in many sandbox environments where
+        // OpenStreetMap or Esri tiles may be blocked.  Only the 'a'
+        // subdomain is specified to avoid DNS issues with multiple hosts.
+        L.tileLayer('https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+          attribution:
+            '© OpenStreetMap contributors, © CARTO',
+          maxZoom: 19,
+        }).addTo(map);
+        // Draw a light outline of the simulation area for context.
+        L.rectangle(
+          [
+            [latMin, lonMin],
+            [latMax, lonMax],
+          ],
+          {
+            color: '#666',
+            weight: 1,
+            fillOpacity: 0.05,
+          }
+        ).addTo(map);
+        // Canvas overlay for fire simulation
+        fireCanvas = document.getElementById('fireCanvas');
+        ctx = fireCanvas.getContext('2d');
+        updateCanvasSize();
+        map.on('move zoom resize', () => {
+          updateCanvasSize();
+          drawFrame(parseInt(timeSlider.value, 10));
+        });
+        // First responder layer (Group)
+        responderLayer = L.layerGroup();
+        // Sample first responder positions (random within bounding box)
+        function generateResponders() {
+          responderLayer.clearLayers();
+          const positions = [];
+          for (let i = 0; i < 5; i++) {
+            const lat = latMin + Math.random() * (latMax - latMin);
+            const lon = lonMin + Math.random() * (lonMax - lonMin);
+            positions.push([lat, lon]);
+          }
+          positions.forEach((p) => {
+            L.marker(p, { title: 'Responder' }).addTo(responderLayer);
+          });
+        }
+        generateResponders();
+        responderLayer.addTo(map);
+        // Perimeter layer (live fire perimeters)
+        perimeterLayer = L.esri.featureLayer({
+          url: PERIMETER_URL,
+          simplifyFactor: 0.5,
+          cacheLayers: false,
+          where: '1=1',
+          style: function () {
+            return { color: '#ffeb3b', weight: 2, fill: false };
+          },
+        });
+        perimeterLayer.addTo(map);
+        // RAWS weather stations layer
+        rawsLayer = L.esri.featureLayer({
+          url: RAWS_URL,
+          pointToLayer: function (geojson, latlng) {
+            return L.circleMarker(latlng, {
+              radius: 4,
+              color: '#00BFFF',
+              fillColor: '#00BFFF',
+              fillOpacity: 0.8,
+            }).bindPopup(
+              `<strong>${geojson.properties.StationName || 'RAWS Station'}</strong><br/>` +
+                (geojson.properties.ObservedDate
+                  ? new Date(geojson.properties.ObservedDate).toLocaleString()
+                  : '')
+            );
+          },
+        });
+        // Prescribed burn layer from Watch Duty (points).  Only added when toggled.
+        prescribedLayer = L.esri.featureLayer({
+          url: PRESCRIBED_URL,
+          pointToLayer: function (geojson, latlng) {
+            return L.circleMarker(latlng, {
+              radius: 5,
+              color: '#ff9800',
+              fillColor: '#ff9800',
+              fillOpacity: 0.8,
+            }).bindPopup(
+              `<strong>Prescribed Burn</strong><br/>` +
+              (geojson.properties && geojson.properties.Name
+                ? `${geojson.properties.Name}<br/>`
+                : '') +
+              (geojson.properties && geojson.properties.StartTime
+                ? `Start: ${new Date(geojson.properties.StartTime).toLocaleString()}`
+                : '')
+            );
+          },
+        });
+        // Do not add RAWS layer by default; toggle controls will handle it.
+        // Hotspot overlay (NASA FIRMS) if key provided
+        if (FIRMS_MAP_KEY) {
+          hotspotLayer = L.tileLayer.wms(
+            `https://firms.modaps.eosdis.nasa.gov/wms/${FIRMS_MAP_KEY}`,
+            {
+              layers: FIRMS_LAYER,
+              format: 'image/png',
+              transparent: true,
+              attribution: 'NASA FIRMS',
+              opacity: 0.8,
+            }
+          );
+        }
+        // Toggle layers based on checkboxes
+        toggleResponders.addEventListener('change', () => {
+          if (toggleResponders.checked) {
+            responderLayer.addTo(map);
+          } else {
+            map.removeLayer(responderLayer);
+          }
+        });
+        togglePerimeters.addEventListener('change', () => {
+          if (togglePerimeters.checked) {
+            perimeterLayer.addTo(map);
+          } else {
+            map.removeLayer(perimeterLayer);
+          }
+        });
+        toggleRAWS.addEventListener('change', () => {
+          if (toggleRAWS.checked) {
+            rawsLayer.addTo(map);
+          } else {
+            map.removeLayer(rawsLayer);
+          }
+        });
+        togglePrescribed.addEventListener('change', () => {
+          if (togglePrescribed.checked) {
+            prescribedLayer.addTo(map);
+          } else {
+            map.removeLayer(prescribedLayer);
+          }
+        });
+        toggleHotspots.addEventListener('change', () => {
+          if (!hotspotLayer) return;
+          if (toggleHotspots.checked) {
+            hotspotLayer.addTo(map);
+          } else {
+            map.removeLayer(hotspotLayer);
+          }
+        });
+
+        // Search functionality: query active fire perimeters by name and zoom to the first match.
+        function searchFire() {
+          const term = searchInput.value.trim();
+          if (!term) return;
+          const upperTerm = term.toUpperCase();
+          // Construct a SQL where clause to match common fire name fields.  Some
+          // services use IncidentName while others use FireName.  We combine
+          // multiple fields with OR to improve the chances of a match.  Unknown
+          // fields are ignored by the server.  Escape single quotes by doubling.
+          const safeTerm = upperTerm.replace(/'/g, "''");
+          const conditions = [
+            `UPPER(IncidentName) LIKE '%${safeTerm}%'`,
+            `UPPER(FireName) LIKE '%${safeTerm}%'`,
+            `UPPER(FIRENAME) LIKE '%${safeTerm}%'`,
+            `UPPER(poly_IncidentName) LIKE '%${safeTerm}%'`,
+          ];
+          const where = conditions.join(' OR ');
+          // Query the perimeter feature service.  Return only the first few
+          // features to minimise bandwidth.  Note: Esri servers silently
+          // ignore unsupported field names.
+          if (!perimeterLayer) {
+            alert('Perimeter data is not yet available.');
+            return;
+          }
+          perimeterLayer
+            .query()
+            .where(where)
+            .returnGeometry(true)
+            .limit(5)
+            .run((error, featureCollection) => {
+              if (error) {
+                console.error('Search error', error);
+                alert('Could not perform search.');
+                return;
+              }
+              const features = featureCollection && featureCollection.features;
+              if (!features || features.length === 0) {
+                alert('No matching fires found.');
+                return;
+              }
+              // Zoom to the first matching feature's bounds
+              const first = features[0];
+              const highlight = L.geoJSON(first);
+              const bounds = highlight.getBounds();
+              map.fitBounds(bounds.pad(0.1));
+              highlight.setStyle({ color: '#2196f3', weight: 3, fill: false });
+              highlight.addTo(map);
+              // Remove the highlight after a few seconds
+              setTimeout(() => {
+                map.removeLayer(highlight);
+              }, 8000);
+            });
+        }
+        searchBtn.addEventListener('click', searchFire);
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            searchFire();
+          }
+        });
+      }
+      function updateCanvasSize() {
+        const mapEl = document.getElementById('map');
+        const width = mapEl.clientWidth;
+        const height = mapEl.clientHeight;
+        fireCanvas.width = width;
+        fireCanvas.height = height;
+        fireCanvas.style.width = `${width}px`;
+        fireCanvas.style.height = `${height}px`;
+      }
+      // Simulation initialisation
+      function initSimulation() {
+        // Compute cell area (approx)
+        const latSpan = latMax - latMin;
+        const lonSpan = lonMax - lonMin;
+        const midLatRad = ((latMin + latMax) / 2) * (Math.PI / 180);
+        const areaKm2 = latSpan * 111.32 * lonSpan * 111.32 * Math.cos(midLatRad);
+        cellArea = (areaKm2 / (rows * cols)) * 247.105;
+        fuelMap = Array.from({ length: rows }, () => new Array(cols));
+        reachTime = Array.from({ length: rows }, () => new Array(cols).fill(Infinity));
+        burnEndTime = Array.from({ length: rows }, () => new Array(cols).fill(Infinity));
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            fuelMap[r][c] = fuelAt(r, c);
+          }
+        }
+        let currState = Array.from({ length: rows }, () => new Array(cols).fill(0));
+        let burnRemaining = Array.from({ length: rows }, () => new Array(cols).fill(0));
+        // Ignite centre cluster
+        const centerR = Math.floor(rows / 2);
+        const centerC = Math.floor(cols / 2);
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const rr = centerR + dr;
+            const cc = centerC + dc;
+            if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) continue;
+            currState[rr][cc] = 1;
+            burnRemaining[rr][cc] = burnDur[fuelMap[rr][cc]];
+            reachTime[rr][cc] = 0;
+            burnEndTime[rr][cc] = burnDur[fuelMap[rr][cc]];
+          }
+        }
+        // Simulation loop to populate reachTime and burnEndTime
+        const windDeg = parseInt(windDirInput.value, 10);
+        const windRad = (windDeg * Math.PI) / 180;
+        const neighWeights = neighDirs.map((nd) => {
+          let w = 1 + 0.6 * Math.cos(nd.angle - windRad);
+          if (w < 0.3) w = 0.3;
+          if (w > 1.7) w = 1.7;
+          return w;
+        });
+        const dx = Math.sin(windRad);
+        const dy = Math.cos(windRad);
+        const driftRow = -dy;
+        const driftCol = dx;
+        for (let t = 0; t < maxTime; t++) {
+          let nextState = Array.from({ length: rows }, () => new Array(cols).fill(0));
+          let nextBurnRemaining = Array.from({ length: rows }, () => new Array(cols).fill(0));
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              if (currState[r][c] === 1) {
+                // Decrement burn remaining
+                const rem = burnRemaining[r][c] - 1;
+                if (rem > 0) {
+                  nextState[r][c] = 1;
+                  nextBurnRemaining[r][c] = rem;
+                } else {
+                  nextState[r][c] = 2;
+                }
+                // Try to ignite neighbours
+                for (let i = 0; i < neighDirs.length; i++) {
+                  const nr = r + neighDirs[i].dr;
+                  const nc = c + neighDirs[i].dc;
+                  if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+                  if (currState[nr][nc] !== 0) continue;
+                  const fuel = fuelMap[nr][nc];
+                  let p = baseProb[fuel] * neighWeights[i];
+                  if (p > 0.9) p = 0.9;
+                  if (Math.random() < p) {
+                    if (nextState[nr][nc] === 0) {
+                      nextState[nr][nc] = 1;
+                      nextBurnRemaining[nr][nc] = burnDur[fuel];
+                      if (reachTime[nr][nc] === Infinity) {
+                        reachTime[nr][nc] = t + 1;
+                        burnEndTime[nr][nc] = t + 1 + burnDur[fuel];
+                      }
+                    }
+                  }
+                }
+                // Ember spotting
+                if (Math.random() < 0.02) {
+                  const dist = 3 + Math.floor(Math.random() * 4);
+                  const rr = Math.round(r + driftRow * dist);
+                  const cc = Math.round(c + driftCol * dist);
+                  if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) {
+                    if (currState[rr][cc] === 0 && nextState[rr][cc] === 0) {
+                      const fuel = fuelMap[rr][cc];
+                      nextState[rr][cc] = 1;
+                      nextBurnRemaining[rr][cc] = burnDur[fuel];
+                      if (reachTime[rr][cc] === Infinity) {
+                        reachTime[rr][cc] = t + 1;
+                        burnEndTime[rr][cc] = t + 1 + burnDur[fuel];
+                      }
+                    }
+                  }
+                }
+              } else if (currState[r][c] === 2) {
+                nextState[r][c] = 2;
+              }
+            }
+          }
+          // Carry over burning cells that remain
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              if (currState[r][c] === 1 && nextState[r][c] === 0) {
+                nextState[r][c] = 1;
+                nextBurnRemaining[r][c] = burnRemaining[r][c] - 1;
+              }
+            }
+          }
+          currState = nextState;
+          burnRemaining = nextBurnRemaining;
+        }
+      }
+      function drawFrame(t) {
+        if (!map) return;
+        ctx.clearRect(0, 0, fireCanvas.width, fireCanvas.height);
+        const latSpan = latMax - latMin;
+        const lonSpan = lonMax - lonMin;
+        let activeCount = 0;
+        let burningCount = 0;
+        let burnedCount = 0;
+        for (let r = 0; r < rows; r++) {
+          const latTop = latMax - (r * latSpan) / rows;
+          const latBot = latMax - ((r + 1) * latSpan) / rows;
+          for (let c = 0; c < cols; c++) {
+            const lonLeft = lonMin + (c * lonSpan) / cols;
+            const lonRight = lonMin + ((c + 1) * lonSpan) / cols;
+            const rt = reachTime[r][c];
+            if (rt === Infinity) continue;
+            let stateType = 0;
+            let opacity = 0;
+            if (t < rt) {
+              const dt = rt - t;
+              if (dt <= 4) {
+                stateType = 3;
+                opacity = 0.15 + (4 - dt) * 0.1;
+              } else {
+                continue;
+              }
+            } else if (t < burnEndTime[r][c]) {
+              stateType = 1;
+              opacity = 0.85;
+              burningCount++;
+            } else {
+              stateType = 2;
+              opacity = 0.6;
+              burnedCount++;
+            }
+            const ptTL = map.latLngToLayerPoint([latTop, lonLeft]);
+            const ptBR = map.latLngToLayerPoint([latBot, lonRight]);
+            const x = ptTL.x;
+            const y = ptTL.y;
+            const w = ptBR.x - ptTL.x;
+            const h = ptBR.y - ptTL.y;
+            let color;
+            if (stateType === 1) color = `rgba(255,87,34,${opacity})`;
+            else if (stateType === 2) color = `rgba(96,96,96,${opacity})`;
+            else color = `rgba(255,171,64,${opacity})`;
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, w, h);
+          }
+        }
+        activeCount = burningCount;
+        // Update chips
+        chipActive.textContent = `Active: ${activeCount}`;
+        chipBurning.textContent = `Burning: ${(burningCount * cellArea).toFixed(1)} acres`;
+        chipBurned.textContent = `Burned: ${(burnedCount * cellArea).toFixed(1)} acres`;
+      }
+      // Playback control
+      function togglePlayback() {
+          if (playing) {
+            clearInterval(intervalId);
+            playing = false;
+            playBtn.textContent = 'Play';
+          } else {
+            playing = true;
+            playBtn.textContent = 'Pause';
+            intervalId = setInterval(() => {
+              let t = parseInt(timeSlider.value, 10);
+              if (t >= maxTime) {
+                clearInterval(intervalId);
+                playing = false;
+                playBtn.textContent = 'Play';
+                return;
+              }
+              t += 1;
+              timeSlider.value = t;
+              timeLabel.textContent = `${t} h`;
+              drawFrame(t);
+            }, 700);
+          }
+      }
+      // Event bindings
+      windDirInput.addEventListener('change', () => {
+        if (playing) togglePlayback();
+        initSimulation();
+        drawFrame(parseInt(timeSlider.value, 10));
+      });
+      rerunBtn.addEventListener('click', () => {
+        if (playing) togglePlayback();
+        initSimulation();
+        drawFrame(parseInt(timeSlider.value, 10));
+      });
+      playBtn.addEventListener('click', togglePlayback);
+      timeSlider.addEventListener('input', (e) => {
+        const t = parseInt(e.target.value, 10);
+        timeLabel.textContent = `${t} h`;
+        drawFrame(t);
+      });
+      // On load
+      window.addEventListener('load', () => {
+        initMap();
+        initSimulation();
+        drawFrame(0);
+        // Collapse the side panel on initial load to maximise map area.
+        // This triggers the same toggle logic as a user clicking the hamburger
+        // button, hiding the control panel and expanding the map.  Users can
+        // reveal the controls by clicking the menu icon.
+        togglePanelBtn.click();
+      });
+    })();
+  </script>
+</body>
+</html>
