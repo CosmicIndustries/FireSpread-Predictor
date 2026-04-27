@@ -520,14 +520,14 @@ function runSim(terrain,params,seed=31337){
             const rise=nb.elev-c.elev;
             const sf=Math.exp(4.2*rise+0.9*rise*Math.max(0,cosT));
             const df=(Math.abs(dx)+Math.abs(dy)===2)?0.707:1.0;
-            const prob=Math.min(0.97,TP[nb.type].ros*ellF*sf*fwiMF(nb.moist)*df*crownMult*terrMult*0.88);
+            const prob=Math.min(0.97,TP[nb.type].ros*ellF*sf*fwiMF(nb.moist)*df*crownMult*terrMult*0.44);
             if(rng()<prob)ng[ny][nx]={...nb,fire:F.PRE,tick:0,crown:isCrown&&nb.type===T.FOREST};
           }
         // ── ALGORITHM 5: Trajectory-based ember transport ───────────────────────────
         // Embers follow a ballistic arc in wind direction with lateral dispersion.
         // Crown fires shed far more embers (brand flux ∝ fire intensity).
         // ── ALG 5: Trajectory-based brand (ember) transport ────────────────────
-        const brandRate=isCrown?0.11:0.032;
+        const brandRate=isCrown?0.055:0.016;
         if(rng()<brandRate*(1+windSpd/14)){
           const dist=8+Math.floor(rng()*24);
           const lateral=(rng()-.5)*dist*0.38;
@@ -537,7 +537,7 @@ function runSim(terrain,params,seed=31337){
             const em=g[ey][ex];
             if(em.fire===F.NONE&&TP[em.type].ros>0){
               ng[ey][ex]={...em,fire:F.FLAME,tick:0,crown:false};
-              if(windSpd>25&&rng()<0.28){
+              if(windSpd>25&&rng()<0.14){
                 const d2=4+Math.floor(rng()*12);
                 const ex2=Math.round(ex+Math.sin(wRad)*d2),ey2=Math.round(ey-Math.cos(wRad)*d2);
                 if(ex2>=0&&ex2<G&&ey2>=0&&ey2<G&&g[ey2]?.[ex2]?.fire===F.NONE&&TP[g[ey2][ex2].type].ros>0)
