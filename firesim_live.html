@@ -263,7 +263,7 @@ button{font-family:inherit;cursor:pointer}
     <div class="srow2"><input class="sinp" id="sinp" placeholder="Fire name (PARK, FLAT…)"><button class="sbtn" id="sbtn">→</button></div>
     <div class="abox">
       <div class="at">⚡ ALGORITHM</div>
-      <div class="ab">Rothermel ROS: φ_w=e^(0.065·V·cosθ)<br>Slope: φ_s=e^(4.2·Δh)<br>Moisture extinction applied<br>Stochastic ember spotting<br>Moore(8) CA · 80×80 grid<br>Δt=5 min · 72 steps (6h)<br>Ensemble: 15 RNG seeds</div>
+      <div class="ab">Huygens ellipse wavefront<br>Van Wagner crown fire (2.8×)<br>Rothermel slope+wind align<br>FWI non-linear moisture<br>Terrain wind channeling<br>Trajectory ember transport<br>Crown cascade @ >25 mph<br>Δt=5 min · 72 steps (6h)<br>Ensemble: 15 RNG seeds</div>
     </div>
   </div>
 
@@ -469,14 +469,56 @@ function runSim(terrain,params,seed=31337){
       const c=g[y][x];
       if(c.fire===F.FLAME){
         const nt=c.tick+1;ng[y][x]={...c,tick:nt,fire:nt>=TP[c.type].dur?F.CHAR:F.FLAME};
-        for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||nx>=G||ny<0||ny>=G)continue;const nb=g[ny][nx];if(nb.fire!==F.NONE||TP[nb.type].ros===0)continue;
-          const sa=Math.atan2(dy,dx),wf=Math.exp(.065*windSpd*Math.cos(sa-wRad)),sf=Math.exp(4.2*(nb.elev-c.elev)),mf=Math.max(0,1-nb.moist*3.8),df=(Math.abs(dx)+Math.abs(dy)===2)?.707:1;
-          if(rng()<Math.min(.93,TP[nb.type].ros*wf*sf*mf*df*.72))ng[ny][nx]={...nb,fire:F.PRE,tick:0};}
-        // Ember spotting
-        if(rng()<.04*(1+windSpd/18)){
-          const dist=6+Math.floor(rng()*18),jx=(rng()-.5)*3,jy=(rng()-.5)*3;
-          const ex=Math.round(x+Math.sin(wRad)*dist+jx),ey=Math.round(y-Math.cos(wRad)*dist+jy);
-          if(ex>=0&&ex<G&&ey>=0&&ey<G){const em=g[ey][ex];if(em.fire===F.NONE&&TP[em.type].ros>0)ng[ey][ex]={...em,fire:F.PRE,tick:0};}
+        // ── ALG 1: Huygens elliptical wavefront (Anderson 1983) ────────────────────
+          const U_kmh=windSpd*1.609;
+          const LB=Math.max(1.05,1+8.729*Math.pow(Math.max(0,1-Math.exp(-0.030*U_kmh)),2.155));
+          const ec=(LB-1)/(LB+1);
+          // ── ALG 2: Van Wagner crown fire ─────────────────────────────────────────
+          const I_surf=TP[c.type].ros*(1-Math.min(c.moist,1))*windSpd*0.12;
+          const isCrown=c.type===T.FOREST&&I_surf>1.5&&windSpd>15;
+          const crownMult=isCrown?2.8:1.0;
+          // ── ALG 3: Terrain wind channeling ──────────────────────────────────────
+          const terrMult=c.elev<0.25?1.28:c.elev>0.78?0.82:1.0;
+          // ── ALG 4: FWI moisture extinction ──────────────────────────────────────
+          const fwiMF=m=>Math.max(0,Math.pow(1-Math.min(m*1.7,1),2.2));
+
+          for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+            if(!dx&&!dy)continue;
+            const nx=x+dx,ny=y+dy;
+            if(nx<0||nx>=G||ny<0||ny>=G)continue;
+            const nb=g[ny][nx];
+            if(nb.fire!==F.NONE||TP[nb.type].ros===0)continue;
+            const sa=Math.atan2(dy,dx);
+            const cosT=Math.cos(sa-wRad);
+            const ellF=(1-ec)/(1-ec*cosT);
+            const rise=nb.elev-c.elev;
+            const sf=Math.exp(4.2*rise+0.9*rise*Math.max(0,cosT));
+            const df=(Math.abs(dx)+Math.abs(dy)===2)?0.707:1.0;
+            const prob=Math.min(0.97,TP[nb.type].ros*ellF*sf*fwiMF(nb.moist)*df*crownMult*terrMult*0.88);
+            if(rng()<prob)ng[ny][nx]={...nb,fire:F.PRE,tick:0,crown:isCrown&&nb.type===T.FOREST};
+          }
+        // ── ALGORITHM 5: Trajectory-based ember transport ───────────────────────────
+        // Embers follow a ballistic arc in wind direction with lateral dispersion.
+        // Crown fires shed far more embers (brand flux ∝ fire intensity).
+        // ── ALG 5: Trajectory-based brand (ember) transport ────────────────────
+        const brandRate=isCrown?0.11:0.032;
+        if(rng()<brandRate*(1+windSpd/14)){
+          const dist=8+Math.floor(rng()*24);
+          const lateral=(rng()-.5)*dist*0.38;
+          const ex=Math.round(x+Math.sin(wRad)*dist+Math.cos(wRad)*lateral);
+          const ey=Math.round(y-Math.cos(wRad)*dist+Math.sin(wRad)*lateral);
+          if(ex>=0&&ex<G&&ey>=0&&ey<G){
+            const em=g[ey][ex];
+            if(em.fire===F.NONE&&TP[em.type].ros>0){
+              ng[ey][ex]={...em,fire:F.FLAME,tick:0,crown:false};
+              if(windSpd>25&&rng()<0.28){
+                const d2=4+Math.floor(rng()*12);
+                const ex2=Math.round(ex+Math.sin(wRad)*d2),ey2=Math.round(ey-Math.cos(wRad)*d2);
+                if(ex2>=0&&ex2<G&&ey2>=0&&ey2<G&&g[ey2]?.[ex2]?.fire===F.NONE&&TP[g[ey2][ex2].type].ros>0)
+                  ng[ey2][ex2]={...g[ey2][ex2],fire:F.PRE,tick:0,crown:false};
+              }
+            }
+          }
         }
       }else if(c.fire===F.PRE){const nt=c.tick+1;ng[y][x]={...c,tick:nt,fire:nt>=2?F.FLAME:F.PRE};}
     }
@@ -593,7 +635,11 @@ function draw(){
   // Single mode
   if(S.showZone)drawZone(ctx,tl,zW,zH);
   for(let y=0;y<G;y++)for(let x=0;x<G;x++){const c=snap[y][x];if(c.fire===F.NONE)continue;const px=tl.x+x*cW,py=tl.y+y*cH;let r,g_,b,a;
-    if(c.fire===F.FLAME){const fk=.78+Math.random()*.22;r=Math.round(252*fk);g_=Math.round((42+Math.random()*105)*fk);b=0;a=.94;}
+    if(c.fire===F.FLAME){
+      if(c.crown){// Crown fire: white-hot core
+        const fk=.9+Math.random()*.1;r=255;g_=Math.round((200+Math.random()*55)*fk);b=Math.round(80*fk);a=.97;
+      }else{const fk=.78+Math.random()*.22;r=Math.round(252*fk);g_=Math.round((42+Math.random()*105)*fk);b=0;a=.94;}
+    }
     else if(c.fire===F.PRE){r=250;g_=130;b=20;a=.7;}
     else if(c.fire===F.CHAR){if(!S.showChar)continue;r=22;g_=17;b=12;a=.88;}
     ctx.fillStyle=`rgba(${r},${g_},${b},${a})`;ctx.fillRect(px,py,cW+.5,cH+.5);}
@@ -786,7 +832,7 @@ function rasterizePerim(feat,bounds,terrain){
       let inside=false;
       for(const ring of rings){ if(pip(lng,lat,ring)) inside=!inside; }
       if(inside&&grid[y][x].type!==T.WATER){
-        grid[y][x]={...grid[y][x],fire:F.CHAR,tick:99};
+        grid[y][x]={...grid[y][x],fire:F.CHAR,tick:99,crown:false};
         charCount++;
       }
     }
@@ -802,7 +848,7 @@ function rasterizePerim(feat,bounds,terrain){
       const nx=x+dx,ny=y+dy;
       if(nx<0||nx>=G||ny<0||ny>=G||grid[ny]?.[nx]?.fire===F.NONE) edge=true;
     }
-    if(edge) eg[y][x]={...grid[y][x],fire:F.FLAME,tick:0};
+    if(edge) eg[y][x]={...grid[y][x],fire:F.FLAME,tick:0,crown:false};
   }
   return{grid:eg,charCount};
 }
