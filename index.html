@@ -190,6 +190,7 @@ button{font-family:inherit;cursor:pointer}
 .leaflet-popup-content b{color:var(--pb);font-weight:700}
 .leaflet-popup-content small{color:var(--f3);font-family:'DM Mono',monospace}
 
+.kbd-active #kbd-hint{opacity:1!important}
 @media(max-width:720px){.side{width:280px}#map,.tl,#ov{left:0!important}.asub{display:none}.spd>span{display:none}}
 </style>
 </head>
@@ -259,6 +260,12 @@ button{font-family:inherit;cursor:pointer}
     <div class="sh">Ignition Points</div>
     <div id="ignlist" class="ignlist"></div>
     <div style="font-size:11px;color:var(--f3);margin-bottom:14px">Each map click adds an ignition point. Click item × to remove.</div>
+    <div class="sh">Draw Ignition</div>
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button class="sbtn" id="draw-line-btn" style="flex:1;font-size:11px" title="Draw a fire line (polyline)">✏ Fire Line</button>
+      <button class="sbtn" id="draw-poly-btn" style="flex:1;font-size:11px;background:var(--s3)" title="Draw a burn polygon">▭ Polygon</button>
+      <button class="sbtn" id="draw-clear-btn" style="flex:1;font-size:11px;background:var(--err)" title="Clear drawn shapes">✕ Clear</button>
+    </div>
     <div class="sh">Search Active Fires</div>
     <div class="srow2"><input class="sinp" id="sinp" placeholder="Fire name (PARK, FLAT…)"><button class="sbtn" id="sbtn">→</button></div>
     <div class="abox">
@@ -274,6 +281,9 @@ button{font-family:inherit;cursor:pointer}
     <div class="trow" data-lay="incs"><span><span class="dsw" style="background:#FF6D00;border-radius:50%"></span>Wildfire Incidents (WFIGS)</span><div class="tog on" id="tog-incs"><div class="kn"></div></div></div>
     <div class="trow" data-lay="raws"><span><span class="dsw" style="background:#42A5F5;border-radius:50%"></span>RAWS Weather Stations</span><div class="tog" id="tog-raws"><div class="kn"></div></div></div>
     <div class="trow" data-lay="modis"><span><span class="dsw" style="background:#E91E63"></span>MODIS Thermal (NASA GIBS)</span><div class="tog" id="tog-modis"><div class="kn"></div></div></div>
+    <div class="trow" data-lay="viirs_snpp" data-fetch="viirs"><span><span class="dsw" style="background:#FF1744;border-radius:50%"></span>VIIRS SNPP 24h (FIRMS)</span><div class="tog" id="tog-viirs_snpp"><div class="kn"></div></div></div>
+    <div class="trow" data-lay="viirs_noaa20" data-fetch="viirs20"><span><span class="dsw" style="background:#FF6D00;border-radius:50%"></span>VIIRS NOAA-20 24h (FIRMS)</span><div class="tog" id="tog-viirs_noaa20"><div class="kn"></div></div></div>
+    <div class="trow" data-lay="adsb"><span><span class="dsw" style="background:#90CAF9;border-radius:50%"></span>✈ Aerial Resources (ADS-B)</span><div class="tog" id="tog-adsb"><div class="kn"></div></div></div>
     <div class="sh">Base Map</div>
     <div class="bgrid">
       <button class="bbtn on" data-bm="dark">🌑 Dark</button>
@@ -297,6 +307,9 @@ button{font-family:inherit;cursor:pointer}
     <div class="scard"><div class="slbl">Largest Fire</div><div class="sval" id="ds-b" style="font-size:13px">—</div><div class="ssub" id="ds-bs"></div></div>
     <div class="sh">Projection</div>
     <div id="pstats"><div class="srow"><span>Status</span><span style="color:var(--f3)">No projection</span></div></div>
+    <div class="sh" style="margin-top:16px">Community Risk Index</div>
+    <button class="sbtn" id="risk-btn" style="width:100%;margin-bottom:8px;font-size:11.5px" disabled>Compute Risk from OSM</button>
+    <div id="risk-table" style="font-size:11px;color:var(--f3)">Run a projection first</div>
     <div class="sh">Open Data Sources</div>
     <div class="srclist">
       <div class="srci"><div class="sdot ld" id="s0"></div>NIFC · Active Perimeters</div>
@@ -304,6 +317,9 @@ button{font-family:inherit;cursor:pointer}
       <div class="srci"><div class="sdot" id="s2"></div>NIFC · RAWS Stations</div>
       <div class="srci"><div class="sdot" id="s3"></div>NASA GIBS · MODIS Thermal</div>
       <div class="srci"><div class="sdot" id="s4"></div>NOAA NWS · Gridded Weather</div>
+      <div class="srci"><div class="sdot" id="s6"></div>NASA FIRMS · VIIRS SNPP/NOAA-20</div>
+      <div class="srci"><div class="sdot" id="s7"></div>OpenSky Network · ADS-B</div>
+      <div class="srci"><div class="sdot" id="s8"></div>OSM Overpass · Community Risk</div>
       <div class="srci"><div class="sdot" id="s5"></div>OpenStreetMap / CARTO / Esri</div>
     </div>
   </div>
@@ -313,6 +329,7 @@ button{font-family:inherit;cursor:pointer}
     <div class="sh">Export</div>
     <button class="ebtn" id="e-gj" disabled>📄 GeoJSON fire perimeter</button>
     <button class="ebtn" id="e-csv" disabled>📊 CSV timestep data</button>
+    <button class="ebtn" id="e-kml" disabled>📌 KML / Google Earth</button>
     <button class="ebtn" id="e-share">🔗 Copy shareable URL</button>
     <div class="sh">URL State</div>
     <div style="font-size:11px;color:var(--f3);line-height:1.6">Params (lat, lng, wind, moisture) are encoded in the URL hash — share to restore projection.</div>
@@ -365,6 +382,9 @@ button{font-family:inherit;cursor:pointer}
   <svg id="gsvg" width="240" height="52" viewBox="0 0 240 52"></svg>
 </div>
 
+<div id="kbd-hint" style="position:fixed;bottom:92px;right:16px;z-index:999;background:rgba(9,20,33,.92);border:1px solid var(--s2);border-radius:8px;padding:6px 10px;font-size:9.5px;color:var(--f3);font-family:'DM Mono',monospace;pointer-events:none;opacity:0;transition:opacity .3s">
+  Space play/pause · ←→ step · R reset · D draw · P probability
+</div>
 <footer class="tl">
   <div class="tlc">
     <button class="cb" id="b-rw" disabled>⏮</button>
@@ -394,6 +414,8 @@ button{font-family:inherit;cursor:pointer}
 <div id="toasts"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
 <script>
 'use strict';
@@ -809,6 +831,68 @@ function bindUI(){
   $('e-gj').addEventListener('click',exportGJ);$('e-csv').addEventListener('click',exportCSV);
   $('e-share').addEventListener('click',()=>{navigator.clipboard?.writeText(location.href).then(()=>toast('Link copied!','o')).catch(()=>toast(location.href,'i',8000));});
   setInterval(()=>{S.ft++;if(S.sim&&!S.playing)draw();},140);
+
+  // ── New button bindings ──────────────────────────────────────────────────
+  $('draw-line-btn')?.addEventListener('click',()=>enableDraw('line'));
+  $('draw-poly-btn')?.addEventListener('click',()=>enableDraw('poly'));
+  $('draw-clear-btn')?.addEventListener('click',clearDraw);
+  $('risk-btn')?.addEventListener('click',computeRiskScore);
+  $('e-kml')?.addEventListener('click',exportKML);
+  // Enable risk button when sim is ready
+  const origAfterProject=afterProject;
+
+  // ── Layer toggles: VIIRS SNPP, NOAA-20, ADS-B ────────────────────────────
+  document.querySelectorAll('[data-fetch]').forEach(row=>{
+    row.addEventListener('click',()=>{
+      const k=row.dataset.lay,tog=$(`tog-${k}`);
+      tog.classList.toggle('on');
+      S.vis[k]=tog.classList.contains('on');
+      if(k==='adsb'){
+        if(S.vis.adsb){ startADSBRefresh(); }
+        else{ stopADSBRefresh(); }
+      } else {
+        const typename=k==='viirs_snpp'?'fires_viirs_snpp_24':'fires_viirs_noaa20_24';
+        if(S.vis[k]) loadFIRMSLayer(k,typename);
+        else if(S.liveLayers[k]) S.map.removeLayer(S.liveLayers[k]);
+      }
+    });
+  });
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  document.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT') return;
+    document.body.classList.add('kbd-active');
+    clearTimeout(document.body._khTimer);
+    document.body._khTimer=setTimeout(()=>document.body.classList.remove('kbd-active'),2000);
+    switch(e.code){
+      case 'Space': e.preventDefault(); togglePlay(); break;
+      case 'ArrowLeft': e.preventDefault(); if(!S.sim)break; stopPlay(); S.step=Math.max(0,S.step-1); updateUI(); draw(); break;
+      case 'ArrowRight': e.preventDefault(); if(!S.sim)break; stopPlay(); S.step=Math.min(STP-1,S.step+1); updateUI(); draw(); break;
+      case 'KeyR': if(S.sim){stopPlay();S.step=0;updateUI();draw();} break;
+      case 'KeyD': enableDraw('line'); break;
+      case 'KeyP': $('mb-prob').click(); break;
+      case 'Digit1': document.querySelector('[data-ms="240"]')?.click(); break;
+      case 'Digit2': document.querySelector('[data-ms="120"]')?.click(); break;
+      case 'Digit3': document.querySelector('[data-ms="60"]')?.click(); break;
+      case 'Digit4': document.querySelector('[data-ms="24"]')?.click(); break;
+      case 'Digit5': document.querySelector('[data-ms="10"]')?.click(); break;
+    }
+  });
+
+  // ── Wire draw events once map is ready ───────────────────────────────────
+  setTimeout(()=>{
+    if(S.map){
+      initDraw();
+      S.map.on(L.Draw?.Event?.CREATED||'draw:created', onDrawCreated);
+    }
+    // Enable risk button after sim ─ patch afterProject
+    const _ap=afterProject;
+    window.afterProject=function(){
+      _ap();
+      const rb=$('risk-btn');if(rb)rb.disabled=false;
+      const ek=$('e-kml');if(ek)ek.disabled=false;
+    };
+  },1500);
 }
 
 
@@ -1129,6 +1213,281 @@ async function autoProject(lat,lng,name,acres){
   drawCompass(S.windDeg);updateUI();draw();
   chip('c-zone',`🔥 ${name} · ${statusParts.join(' · ')}`,'pri');
   toast(`Projection ready · ${statusParts.join(', ')}`,'o');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  FEATURE PACK: FIRMS VIIRS · ADS-B · DRAW MODE · RISK SCORE · KML
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── FIRMS VIIRS layer factory ────────────────────────────────────────────────
+function makeFIRMSLayer(typename){
+  return L.geoJSON(null,{
+    pointToLayer:(f,ll)=>{
+      const c=(f.properties.confidence||f.properties.CONFIDENCE||'n').toString().toLowerCase();
+      const frp=+(f.properties.frp||f.properties.FRP||0);
+      // Color: high=red, nominal=orange, low=yellow; size scales with FRP
+      const color=c[0]==='h'?'#F44336':c[0]==='l'?'#FFEE58':'#FF6D00';
+      const r=Math.max(4,Math.min(12,4+Math.log10(Math.max(1,frp))*2.5));
+      return L.circleMarker(ll,{radius:r,color:'rgba(0,0,0,0.3)',weight:1,fillColor:color,fillOpacity:0.88});
+    },
+    onEachFeature:(f,l)=>{
+      const p=f.properties||{};
+      l.bindPopup(`<b>${typename.includes('noaa')&&'VIIRS NOAA-20'||'VIIRS SNPP'}</b><br>
+        <small>FRP: <b>${p.frp||p.FRP||'?'} MW</b> · Conf: ${p.confidence||p.CONFIDENCE||'?'}</small><br>
+        <small>${p.acq_date||''} ${p.acq_time||''} UTC</small>`);
+    }
+  });
+}
+
+async function loadFIRMSLayer(layerKey,typename){
+  const b=S.map.getBounds();
+  const pad=0.5;
+  const bbox=`${(b.getWest()-pad).toFixed(3)},${(b.getSouth()-pad).toFixed(3)},${(b.getEast()+pad).toFixed(3)},${(b.getNorth()+pad).toFixed(3)},EPSG:4326`;
+  const url=`https://firms.modaps.eosdis.nasa.gov/mapserver/wfs?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=${typename}&OUTPUTFORMAT=application/json&BBOX=${bbox}&maxFeatures=2000`;
+  try{
+    const r=await fetch(url,{signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    const n=d.features?.length||0;
+    if(!S.liveLayers[layerKey]) S.liveLayers[layerKey]=makeFIRMSLayer(typename);
+    S.liveLayers[layerKey].clearLayers();
+    if(n>0) S.liveLayers[layerKey].addData(d);
+    if(S.vis[layerKey]) S.liveLayers[layerKey].addTo(S.map);
+    $('s6').className='sdot';
+    toast(`${n} ${typename.includes('noaa')?'NOAA-20':'SNPP'} hotspots loaded`,'o');
+    return n;
+  }catch(e){$('s6').className='sdot e';toast(`FIRMS ${typename} unavailable`,'e');return 0;}
+}
+
+// ── ADS-B Aerial Resources (OpenSky Network, no key) ────────────────────────
+let adsbLayer=null, adsbTimer=null;
+
+function makeAircraftIcon(ac){
+  // ac: [icao,callsign,origin,t,last,lon,lat,baro,ground,vel,track,vrate,...]
+  const vel=ac[9]||0;
+  const alt=ac[7]||ac[13]||0;
+  // Classify: helicopter (<50 m/s), fast fixed-wing (>100 m/s), medium
+  const type=vel<50?'H':vel>100?'T':'S';
+  const color=type==='H'?'#42A5F5':type==='T'?'#EF5350':'#66BB6A';
+  const track=(ac[10]||0);
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="-12 -12 24 24">
+    <g transform="rotate(${track})">
+      ${type==='H'
+        ? '<circle r="5" fill="'+color+'"/><line x1="0" y1="-8" x2="0" y2="-4" stroke="'+color+'" stroke-width="2"/>'
+        : '<polygon points="0,-10 3,6 0,2 -3,6" fill="'+color+'"/>'}
+    </g></svg>`;
+  return L.divIcon({html:svg,className:'',iconSize:[24,24],iconAnchor:[12,12]});
+}
+
+async function fetchADSB(){
+  if(!S.map||!S.vis.adsb) return;
+  const b=S.map.getBounds();
+  const url=`https://opensky-network.org/api/states/all?lamin=${b.getSouth().toFixed(2)}&lomin=${b.getWest().toFixed(2)}&lamax=${b.getNorth().toFixed(2)}&lomax=${b.getEast().toFixed(2)}`;
+  try{
+    const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    const states=d.states||[];
+    // Filter: airborne, below 4500m, within reasonable speed range
+    const aircraft=states.filter(ac=>
+      ac[5]!=null&&ac[6]!=null&&  // has position
+      !ac[8]&&                     // not on ground
+      (ac[7]||ac[13]||0)<4500      // below 4500m (fire aviation altitude)
+    );
+    if(!adsbLayer){ adsbLayer=L.layerGroup(); if(S.vis.adsb) adsbLayer.addTo(S.map); }
+    adsbLayer.clearLayers();
+    aircraft.forEach(ac=>{
+      const[,callsign,,,,lon,lat,baro,,,vel,track,vrate]=ac;
+      if(!lat||!lon) return;
+      const altM=Math.round(baro||0);
+      const velKts=vel?Math.round(vel*1.944):0;
+      const marker=L.marker([lat,lon],{icon:makeAircraftIcon(ac),zIndexOffset:1000});
+      marker.bindPopup(`<b>${callsign?.trim()||ac[0]}</b><br>
+        <small>Alt: ${altM}m · ${velKts} kts · Hdg: ${Math.round(track||0)}°</small><br>
+        <small>Vrate: ${vrate?Math.round(vrate)+'m/s':'—'}</small>`);
+      adsbLayer.addLayer(marker);
+    });
+    $('s7').className='sdot';
+    chip('c-data',`✈ ${aircraft.length} aircraft`,'inf');
+  }catch(e){$('s7').className='sdot e';}
+}
+
+function startADSBRefresh(){ fetchADSB(); adsbTimer=setInterval(fetchADSB,60000); }
+function stopADSBRefresh(){ clearInterval(adsbTimer); adsbTimer=null; if(adsbLayer) S.map.removeLayer(adsbLayer); }
+
+// ── Draw Ignition Mode (Leaflet.Draw) ────────────────────────────────────────
+let drawItems=null, drawCtrl=null, drawActive=false;
+
+// Bresenham's line algorithm for rasterizing a line segment to grid cells
+function bresenham(x0,y0,x1,y1){
+  const cells=[];
+  let dx=Math.abs(x1-x0),dy=Math.abs(y1-y0);
+  let sx=x0<x1?1:-1,sy=y0<y1?1:-1,err=dx-dy;
+  while(true){
+    cells.push({gx:x0,gy:y0});
+    if(x0===x1&&y0===y1) break;
+    const e2=2*err;
+    if(e2>-dy){err-=dy;x0+=sx;}
+    if(e2<dx){err+=dx;y0+=sy;}
+  }
+  return cells;
+}
+
+function initDraw(){
+  if(!S.map||drawItems) return;
+  drawItems=new L.FeatureGroup().addTo(S.map);
+  if(!window.L?.Draw) return;
+  drawCtrl=new L.Control.Draw({
+    draw:{
+      polyline:{shapeOptions:{color:'#FF1744',weight:3,opacity:.9},repeatMode:true},
+      polygon:{shapeOptions:{color:'#FF6D00',fillOpacity:.18,weight:2}},
+      rectangle:false,circle:false,circlemarker:false,marker:false
+    },
+    edit:{featureGroup:drawItems,remove:true}
+  });
+}
+
+function enableDraw(type){
+  if(!window.L?.Draw){toast('Leaflet.Draw not loaded yet','e');return;}
+  if(!drawCtrl) initDraw();
+  if(!drawCtrl) return;
+  if(!drawActive){ S.map.addControl(drawCtrl); drawActive=true; }
+  const Handler=type==='poly'?L.Draw.Polygon:L.Draw.Polyline;
+  new Handler(S.map,drawCtrl.options.draw[type==='poly'?'polygon':'polyline']).enable();
+  toast(`Draw ${type==='poly'?'polygon':'fire line'} on map, then click last point to finish`,'i',6000);
+}
+
+function clearDraw(){
+  if(drawItems) drawItems.clearLayers();
+  if(drawCtrl&&drawActive){ S.map.removeControl(drawCtrl); drawActive=false; }
+}
+
+function onDrawCreated(e){
+  const layer=e.layer; drawItems.addLayer(layer);
+  const isPoly=layer instanceof L.Polygon;
+  // Determine/create bounds and terrain
+  const center=layer.getBounds().getCenter();
+  if(!S.sim){ project(center); setTimeout(()=>applyDrawnLayer(layer,isPoly),800); return; }
+  applyDrawnLayer(layer,isPoly);
+}
+
+function applyDrawnLayer(layer,isPoly){
+  if(!S.sim) return;
+  const{bounds}=S.sim;
+  const lats=bounds.north-bounds.south,lngs=bounds.east-bounds.west;
+  const toGX=lng=>Math.max(0,Math.min(G-1,Math.round(((lng-bounds.west)/lngs)*G)));
+  const toGY=lat=>Math.max(0,Math.min(G-1,Math.round(((bounds.north-lat)/lats)*G)));
+  let cells=[];
+  if(isPoly){
+    const ring=(layer.getLatLngs()[0]||[]).map(ll=>[ll.lng,ll.lat]);
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const lat=bounds.north-(y+.5)/G*lats,lng=bounds.west+(x+.5)/G*lngs;
+      if(pip(lng,lat,ring)) cells.push({gx:x,gy:y});
+    }
+  }else{
+    const pts=layer.getLatLngs();
+    for(let i=0;i<pts.length-1;i++){
+      const x0=toGX(pts[i].lng),y0=toGY(pts[i].lat);
+      const x1=toGX(pts[i+1].lng),y1=toGY(pts[i+1].lat);
+      cells=cells.concat(bresenham(x0,y0,x1,y1));
+      // Thicken line by 1 cell each side
+      cells=cells.concat(bresenham(x0-1,y0,x1-1,y1));
+      cells=cells.concat(bresenham(x0+1,y0,x1+1,y1));
+    }
+  }
+  // Seed these cells into initGrid
+  if(!S.sim.params.initGrid){
+    S.sim.params.initGrid=S.sim.terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0,crown:false})));
+  }
+  const ig=S.sim.params.initGrid;
+  cells.forEach(({gx,gy})=>{
+    if(ig[gy]?.[gx]&&ig[gy][gx].type!==T.WATER)
+      ig[gy][gx]={...ig[gy][gx],fire:F.FLAME,tick:0,crown:false};
+  });
+  S.ignitions=cells.slice(0,3).map(({gx,gy})=>({lat:bounds.north-gy/G*lats,lng:bounds.west+gx/G*lngs,marker:null}));
+  rerun();
+  toast(`${cells.length} cells set to FLAME from drawn ${isPoly?'polygon':'fire line'}`,'o');
+}
+
+// ── OSM Risk Score (Overpass API) ────────────────────────────────────────────
+async function computeRiskScore(){
+  if(!S.sim?.snapshots||!S.sim.bounds){toast('Run a projection first','e');return;}
+  $('risk-btn').textContent='Computing…';$('risk-btn').disabled=true;
+  const{bounds}=S.sim;
+  const snap=S.sim.snapshots[S.step];
+  // Build list of burning cells → coordinates
+  const lats_=bounds.north-bounds.south,lngs_=bounds.east-bounds.west;
+  const fireCells=[];
+  for(let y=0;y<G;y+=2) for(let x=0;x<G;x+=2){
+    if(snap[y][x].fire!==F.NONE)
+      fireCells.push([bounds.north-(y+.5)/G*lats_,bounds.west+(x+.5)/G*lngs_]);
+  }
+  const query=`[out:json][timeout:20];(node["place"~"^(city|town|village|hamlet)$"](${bounds.south},${bounds.west},${bounds.north},${bounds.east}););out body;`;
+  try{
+    const r=await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,{signal:AbortSignal.timeout(20000)});
+    const d=await r.json();
+    const places=(d.elements||[]).map(el=>{
+      let minKm=9999;
+      for(const[flat,flng]of fireCells){
+        const km=Math.hypot((el.lat-flat)*111,(el.lon-flng)*111*Math.cos(el.lat*Math.PI/180));
+        if(km<minKm)minKm=km;
+      }
+      const pop=el.tags?.population||null;
+      const level=minKm<1?'CRITICAL':minKm<5?'HIGH':minKm<15?'MODERATE':'LOW';
+      return{name:el.tags?.name||'Unknown',km:minKm.toFixed(1),level,pop};
+    }).sort((a,b)=>parseFloat(a.km)-parseFloat(b.km)).slice(0,12);
+
+    const lc={CRITICAL:'var(--err)',HIGH:'var(--pri)',MODERATE:'var(--wrn)',LOW:'var(--ok)'};
+    $('s8').className='sdot';
+    $('risk-table').innerHTML=places.length
+      ? places.map(p=>`<div style="display:flex;justify-content:space-between;padding:5px 2px;border-bottom:1px solid var(--s2)">
+          <span>${p.name}${p.pop?` <small>(${parseInt(p.pop).toLocaleString()})</small>`:''}</span>
+          <span style="color:${lc[p.level]};font-weight:700">${p.km}km</span>
+        </div>`).join('')
+      : '<div style="color:var(--f3);padding:8px 0">No populated places in simulation zone</div>';
+    toast(`Risk computed for ${places.length} communities`,'o');
+  }catch(e){$('s8').className='sdot e';toast('Overpass API unavailable','e');}
+  $('risk-btn').textContent='Compute Risk from OSM';$('risk-btn').disabled=false;
+}
+
+// ── KML Export ────────────────────────────────────────────────────────────────
+function exportKML(){
+  if(!S.sim?.snapshots) return;
+  const snap=S.sim.snapshots[S.step],{bounds}=S.sim;
+  const lats_=bounds.north-bounds.south,lngs_=bounds.east-bounds.west;
+  const cl=(KM*1000/G)/111320; // approx degrees per cell
+  let placemarks='';
+  // Merge contiguous fire cells into KML polygons (simplified: one polygon per cell)
+  const colors={[F.FLAME]:'ff0000ff',[F.CHAR]:'ff222222',[F.PRE]:'ff00aaff'};
+  [F.FLAME,F.CHAR].forEach(fs=>{
+    const cells=[];
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++) if(snap[y][x].fire===fs) cells.push([x,y]);
+    if(!cells.length) return;
+    const label=fs===F.FLAME?'Active Flame':'Charred Area';
+    const coords=cells.map(([x,y])=>{
+      const lat=bounds.north-(y+.5)/G*lats_,lng=bounds.west+(x+.5)/G*lngs_,h=cl/2;
+      return `<Placemark><styleUrl>#${fs===F.FLAME?'flame':'char'}</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>${lng-h},${lat+h},0 ${lng+h},${lat+h},0 ${lng+h},${lat-h},0 ${lng-h},${lat-h},0 ${lng-h},${lat+h},0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+    }).join('');
+    placemarks+=`<!-- ${label} (${cells.length} cells) -->
+${coords}
+`;
+  });
+  const kml=`<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>FireSim ${fmtT(S.step)} — ${S.sim.center?fmtLL(S.sim.center.lat,S.sim.center.lng):''}</name>
+  <description>Generated by FireSim Live · ${new Date().toISOString()}</description>
+  <Style id="flame"><PolyStyle><color>880000ff</color><outline>0</outline></PolyStyle></Style>
+  <Style id="char"><PolyStyle><color>88222222</color><outline>0</outline></PolyStyle></Style>
+  ${placemarks}
+</Document>
+</kml>`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}));
+  a.download=`firesim_${fmtT(S.step).replace(/[^a-z0-9]/gi,'_')}.kml`;
+  a.click();
+  toast('KML exported — open in Google Earth or QGIS','o');
 }
 
 window.addEventListener('load',()=>{boot('Binding UI…');bindUI();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
