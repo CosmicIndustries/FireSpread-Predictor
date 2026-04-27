@@ -415,7 +415,7 @@ const NIFC_P2='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/service
 const NIFC_I='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0';
 const NIFC_R='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/PublicView_RAWS/FeatureServer/1';
 
-const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,
+const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,windSteps:null,
   windDeg:225,windSpd:15,moist:.10,mode:'single',probGrid:null,ignitions:[],
   showPerim:true,showChar:true,showZone:true,showSmoke:true,showGchart:true,
   vis:{perims:true,incs:true,raws:false,modis:false},
@@ -453,8 +453,13 @@ function buildTerrain(lat,lng){
 
 // ── Simulation ────────────────────────
 function runSim(terrain,params,seed=31337){
-  const{windDeg,windSpd,moist:xm,ignPts,initGrid}=params;
-  const wRad=((windDeg+180)%360)*Math.PI/180;const rng=mkRNG(seed);
+  const{windDeg,windSpd,moist:xm,ignPts,initGrid,windSteps,windField}=params;
+  // wRad/windSpd are now per-step; fall back to static if no sequence
+  const rng=mkRNG(seed);
+  // Helper: vector-blend two wind directions (radians)
+  const blendWRad=(a,b,t)=>{const dx=Math.cos(a)*(1-t)+Math.cos(b)*t,dy=Math.sin(a)*(1-t)+Math.sin(b)*t;return Math.atan2(dy,dx);};
+  // Static fallback
+  const staticWRad=((windDeg+180)%360)*Math.PI/180;
   let g;
   if(initGrid){
     g=initGrid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28)})));
@@ -464,12 +469,33 @@ function runSim(terrain,params,seed=31337){
   }
   const snaps=[g.map(r=>r.map(c=>({...c})))];
   for(let step=0;step<STP-1;step++){
+    // ── Dynamic wind: NWS hourly sequence (interpolated between hours) ────────
+    let stepWRad=staticWRad, stepSpd=windSpd;
+    if(windSteps&&windSteps.length){
+      // Smooth interpolation between forecast hours
+      const hi=Math.floor(step/12), frac=(step%12)/12;
+      const w0=windSteps[Math.min(hi,windSteps.length-1)];
+      const w1=windSteps[Math.min(hi+1,windSteps.length-1)];
+      stepSpd=w0.spd+(w1.spd-w0.spd)*frac;
+      stepWRad=blendWRad(w0.wRad,w1.wRad,frac);
+    }
     const ng=g.map(r=>r.map(c=>({...c})));
     for(let y=0;y<G;y++)for(let x=0;x<G;x++){
       const c=g[y][x];
       if(c.fire===F.FLAME){
         const nt=c.tick+1;ng[y][x]={...c,tick:nt,fire:nt>=TP[c.type].dur?F.CHAR:F.FLAME};
         // ── ALG 1: Huygens elliptical wavefront (Anderson 1983) ────────────────────
+          // ── Spatial wind: RAWS IDW field (per-cell, blended with NWS) ──────────
+          let cellSpd=stepSpd, cellWRad=stepWRad;
+          if(windField){
+            const sf=windField[y]?.[x];
+            if(sf){
+              cellSpd=sf.spd*0.55+stepSpd*0.45;
+              cellWRad=blendWRad(stepWRad,sf.wRad,0.55);
+            }
+          }
+          const windSpd=cellSpd; // shadow outer for algorithm block below
+          const wRad=cellWRad;
           const U_kmh=windSpd*1.609;
           const LB=Math.max(1.05,1+8.729*Math.pow(Math.max(0,1-Math.exp(-0.030*U_kmh)),2.155));
           const ec=(LB-1)/(LB+1);
@@ -767,6 +793,121 @@ function bindUI(){
 
 
 // ═══════════════════════════════════════════════════════════════
+//  DYNAMIC WIND ENGINE — NWS temporal sequence + RAWS spatial IDW
+// ═══════════════════════════════════════════════════════════════
+
+// Fetch full NWS hourly wind sequence (up to 10 hours → 120 steps)
+async function fetchNWSSequence(lat,lng){
+  try{
+    const pr=await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lng.toFixed(4)}`,{signal:AbortSignal.timeout(7000)});
+    if(!pr.ok)throw new Error('points');
+    const pd=await pr.json();
+    const furl=pd?.properties?.forecastHourly;
+    if(!furl)throw new Error('no url');
+    const fr=await fetch(furl,{signal:AbortSignal.timeout(9000)});
+    if(!fr.ok)throw new Error('forecast');
+    const fd=await fr.json();
+    const periods=fd?.properties?.periods||[];
+    const current=periods[0]||{};
+    const spd0=parseWS(current.windSpeed);
+    const deg0=CDEG[current.windDirection]??S.windDeg;
+    const tmp=current.temperature;
+    const hum=current.relativeHumidity?.value;
+
+    // Build per-step wind array (STP steps, 12 steps per hour)
+    const windSteps=[];
+    for(let h=0;h<Math.ceil(STP/12)+1;h++){
+      const p=periods[Math.min(h,periods.length-1)]||current;
+      const spd=parseWS(p.windSpeed);
+      const deg=CDEG[p.windDirection]??deg0;
+      const wRad=((deg+180)%360)*Math.PI/180;
+      for(let s=0;s<12;s++) windSteps.push({spd,deg,wRad,hour:h,label:p.startTime?.slice(11,16)||''});
+    }
+
+    // Update UI
+    $('wcard').style.display='block';
+    $('wcard-src').textContent=pd.properties.gridId||'NWS';
+    $('ww-s').textContent=spd0; $('ww-d').textContent=current.windDirection||'—';
+    $('ww-t').textContent=tmp??'—'; $('ww-h').textContent=hum!=null?Math.round(hum):'—';
+    $('nwsl').textContent=`NWS ${pd.properties.gridId||''} · ${periods.length}h forecast`;
+    $('s4').className='sdot';
+    // Update sliders to current conditions
+    setSlider('sl-wd','wdf','wdt','wdv',deg0,v=>`${v}°`);
+    setSlider('sl-ws','wsf','wst','wsv',spd0,v=>`${v} mph`);
+    if(hum!=null){const mo=Math.round(hum/100*25);S.moist=mo/100;setSlider('sl-mo','mof','mot','mov',mo,v=>`${v}%`);}
+    S.windSpd=spd0; S.windDeg=deg0;
+    // Store wind timeline for playback
+    S.windSteps=windSteps;
+    renderWindTimeline(windSteps);
+    toast(`NWS: ${spd0}mph ${current.windDirection||''} now → ${periods.length}h forecast loaded`,'o');
+    return{windSteps,spd:spd0,deg:deg0,tmp,hum};
+  }catch(e){
+    $('nwsl').textContent='Manual (NWS N/A)'; $('s4').className='sdot e';
+    S.windSteps=null;
+    return null;
+  }
+}
+
+// Fetch RAWS stations within bounds, return [{lat,lng,spd,deg,wRad,name}]
+function fetchRAWSNear(bounds){
+  return new Promise(resolve=>{
+    L.esri.query({url:NIFC_R})
+      .within(L.latLngBounds([[bounds.south,bounds.west],[bounds.north,bounds.east]]))
+      .fields(['StationName','NWSID','Wind_Speed','Wind_Direction','WndSpd','WndDir','Latitude','Longitude'])
+      .limit(40).run((err,fc)=>{
+        if(err||!fc?.features?.length){resolve([]);return;}
+        const stations=fc.features.map(f=>{
+          const p=f.properties||{};
+          const spd=+(p.Wind_Speed??p.WndSpd??0);
+          const deg=+(p.Wind_Direction??p.WndDir??0);
+          const[lng,lat]=f.geometry.coordinates;
+          return{lat,lng,spd,deg,wRad:((deg+180)%360)*Math.PI/180,name:p.StationName||p.NWSID||'RAWS'};
+        }).filter(s=>s.spd>0||s.deg>0);
+        resolve(stations);
+      });
+  });
+}
+
+// Build IDW spatial wind field [G][G] from RAWS stations
+function buildSpatialWindField(stations,bounds){
+  if(!stations.length) return null;
+  const lngs=bounds.east-bounds.west, lats=bounds.north-bounds.south;
+  const field=[];
+  for(let y=0;y<G;y++){
+    field[y]=[];
+    const lat=bounds.north-(y+.5)/G*lats;
+    for(let x=0;x<G;x++){
+      const lng=bounds.west+(x+.5)/G*lngs;
+      let wSpd=0,wxR=0,wyR=0,wSum=0;
+      for(const s of stations){
+        const d2=Math.pow((lat-s.lat)*111,2)+Math.pow((lng-s.lng)*111*Math.cos(lat*Math.PI/180),2)+0.01;
+        const w=1/d2;
+        wSpd+=s.spd*w; wxR+=Math.cos(s.wRad)*w; wyR+=Math.sin(s.wRad)*w; wSum+=w;
+      }
+      field[y][x]={spd:wSpd/wSum,wRad:Math.atan2(wyR/wSum,wxR/wSum)};
+    }
+  }
+  return field;
+}
+
+// Render wind speed timeline in the growth chart area
+function renderWindTimeline(windSteps){
+  if(!windSteps?.length) return;
+  // Sample every 12 steps (1 per hour)
+  const hours=[];
+  for(let h=0;h*12<windSteps.length;h++) hours.push(windSteps[h*12]);
+  const W=240,H=28,maxSpd=Math.max(...hours.map(h=>h.spd),1);
+  const pts=hours.map((h,i)=>`${(i/(hours.length-1))*W},${H-2-(h.spd/maxSpd)*(H-6)}`).join(' ');
+  // Add wind overlay to growth chart SVG
+  const gsvg=$('gsvg'); if(!gsvg) return;
+  // Add wind speed line above existing chart
+  const existing=gsvg.innerHTML;
+  const windLine=`<polyline points="${pts}" fill="none" stroke="#90CAF9" stroke-width="1.4" stroke-dasharray="3,2" opacity=".8"/>
+    <text x="2" y="${H}" font-size="7" fill="#42A5F5" font-family="monospace">wind</text>`;
+  gsvg.innerHTML=windLine+existing;
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  AUTO-PROJECTION ENGINE (perimeter + FIRMS hotspots + NWS)
 // ═══════════════════════════════════════════════════════════════
 
@@ -892,11 +1033,16 @@ async function autoProject(lat,lng,name,acres){
   // First fetch hotspots to determine zone size, then build everything at scale
   chip('c-zone','⏳ Fetching hotspots…','pulse dim');
   const roughBounds=mkBounds(lat,lng,60); // wide initial fetch
-  const[,perimFeats,firmsData]=await Promise.all([
-    fetchNWS(lat,lng).catch(()=>null),
+  const[nwsResult,perimFeats,firmsData,rawsStations]=await Promise.all([
+    fetchNWSSequence(lat,lng).catch(()=>null),
     fetchNIFCPerim(name).catch(()=>[]),
-    fetchFIRMS(roughBounds).catch(()=>({features:[],source:null}))
+    fetchFIRMS(roughBounds).catch(()=>({features:[],source:null})),
+    fetchRAWSNear(roughBounds).catch(()=>[])
   ]);
+  if(rawsStations.length){
+    toast(`${rawsStations.length} RAWS station(s) → spatial wind field`,'o');
+    chip('c-mode',`💨 ${rawsStations.length} RAWS · NWS ${(nwsResult?.windSteps?.length/12||0).toFixed(0)}h`,'inf');
+  }
 
   // Scale zone and grid to fit ALL hotspots
   const zoneKm=calcZoneKM(firmsData.features,{lat,lng});
@@ -936,7 +1082,10 @@ async function autoProject(lat,lng,name,acres){
   }
 
   const ignPts=[ll2g(lat,lng,bounds)];
-  const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts,initGrid};
+  const windField=buildSpatialWindField(rawsStations||[],bounds);
+  const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts,initGrid,
+    windSteps:nwsResult?.windSteps||S.windSteps||null,
+    windField};
   S.sim={terrain,bounds,center:{lat,lng},params};
 
   if(S.mode==='prob'){
