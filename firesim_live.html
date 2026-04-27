@@ -358,7 +358,7 @@ button{font-family:inherit;cursor:pointer}
   <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:6px">PROJECTED COVERAGE</div>
   <div style="height:4px;background:var(--s2);border-radius:2px;overflow:hidden;margin-bottom:5px"><div id="zbar"></div></div>
   <div style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace" id="zpct">0%</div>
-  <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace;margin-top:3px" id="zac">~0 acres</div>
+  <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace;margin-top:3px" id="zac">~0 acres</div><div style="font-size:9px;color:var(--f4);font-family:'DM Mono',monospace;margin-top:2px" id="zres">80×80 · 50m/cell</div>
 </div>
 <div class="mcrd" id="gchart" style="bottom:14px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none">
   <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:5px;font-family:'DM Mono',monospace">BURN AREA GROWTH</div>
@@ -377,9 +377,9 @@ button{font-family:inherit;cursor:pointer}
     <div class="tbar off" id="tbar">
       <div class="tbf" id="tbf" style="width:0"></div>
       <div class="tbt" id="tbt" style="left:-8px"></div>
-      <input type="range" id="tslider" min="0" max="71" value="0" disabled>
+      <input type="range" id="tslider" min="0" max="95" value="0" disabled>
     </div>
-    <div class="tmarks"><span>T+0h</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span><span>5h</span><span>T+6h</span></div>
+    <div class="tmarks"><span>T+0h</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span><span>5h</span><span>6h</span><span>7h</span><span>T+8h</span></div>
   </div>
   <div class="tdsp" id="tdsp">T+0h 00m</div>
   <div class="spd">
@@ -397,7 +397,7 @@ button{font-family:inherit;cursor:pointer}
 <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
 <script>
 'use strict';
-const G=80,KM=4,STP=72,ENS=15;
+let G=160,KM=20,STP=96,ENS=15;
 const T={GRASS:0,SHRUB:1,FOREST:2,URBAN:3,WATER:4,ROAD:5,ROCKY:6};
 const F={NONE:0,PRE:1,FLAME:2,CHAR:3};
 const TP=[
@@ -427,7 +427,7 @@ function boot(m){const e=$('bmsg');if(e)e.textContent=m;}
 function mkRNG(seed){let s=seed>>>0;return()=>{s+=0x6D2B79F5;let z=Math.imul(s^(s>>>15),s|1);z^=z+Math.imul(z^(z>>>7),z|61);return((z^(z>>>14))>>>0)/0x100000000;};}
 function noise2d(seed,w,h,p){const r=mkRNG(seed);let f=[];for(let y=0;y<h;y++){f[y]=[];for(let x=0;x<w;x++)f[y][x]=r();}for(let i=0;i<p;i++){const n=[];for(let y=0;y<h;y++){n[y]=[];for(let x=0;x<w;x++){let s=0,c=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){s+=f[Math.max(0,Math.min(h-1,y+dy))][Math.max(0,Math.min(w-1,x+dx))];c++;}n[y][x]=s/c;}}f=n;}return f;}
 function hashLL(lat,lng){const a=(lat*1e5)|0,b=(lng*1e5)|0;let h=(a^Math.imul(b,16807))>>>0;h=Math.imul(h^(h>>>16),0x85ebca6b);h=Math.imul(h^(h>>>13),0xc2b2ae35);return(h^(h>>>16))>>>0;}
-function fmtT(st){const m=st*5;return`T+${Math.floor(m/60)}h ${(m%60).toString().padStart(2,'0')}m`;}
+function fmtT(st){const m=st*5;return`T+${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`;}
 function fmtLL(la,ln){return`${Math.abs(la).toFixed(3)}°${la>=0?'N':'S'} ${Math.abs(ln).toFixed(3)}°${ln>=0?'E':'W'}`;}
 function fmtAc(c){return Math.round(c*(KM*1000/G)**2/4047);}
 function parseWS(s){if(!s||/calm/i.test(s))return 0;const m=s.match(/(\d+)(?:\s+to\s+(\d+))?/);return m?(m[2]?Math.round((+m[1]+ +m[2])/2):+m[1]):0;}
@@ -460,7 +460,7 @@ function runSim(terrain,params,seed=31337){
     g=initGrid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28)})));
   }else{
     g=terrain.grid.map(row=>row.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28),fire:F.NONE,tick:0})));
-    for(const{gx,gy}of(ignPts||[{gx:G>>1,gy:G>>1}])){for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(dx*dx+dy*dy>4)continue;const nx=gx+dx,ny=gy+dy;if(g[ny]?.[nx]&&g[ny][nx].type!==T.WATER)g[ny][nx]={...g[ny][nx],fire:F.FLAME,tick:0};}}
+    for(const{gx,gy}of(ignPts||[{gx:G>>1,gy:G>>1}])){for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(dx*dx+dy*dy>9)continue;const nx=gx+dx,ny=gy+dy;if(g[ny]?.[nx]&&g[ny][nx].type!==T.WATER)g[ny][nx]={...g[ny][nx],fire:F.FLAME,tick:0};}}
   }
   const snaps=[g.map(r=>r.map(c=>({...c})))];
   for(let step=0;step<STP-1;step++){
@@ -471,10 +471,10 @@ function runSim(terrain,params,seed=31337){
         const nt=c.tick+1;ng[y][x]={...c,tick:nt,fire:nt>=TP[c.type].dur?F.CHAR:F.FLAME};
         for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx<0||nx>=G||ny<0||ny>=G)continue;const nb=g[ny][nx];if(nb.fire!==F.NONE||TP[nb.type].ros===0)continue;
           const sa=Math.atan2(dy,dx),wf=Math.exp(.065*windSpd*Math.cos(sa-wRad)),sf=Math.exp(4.2*(nb.elev-c.elev)),mf=Math.max(0,1-nb.moist*3.8),df=(Math.abs(dx)+Math.abs(dy)===2)?.707:1;
-          if(rng()<Math.min(.93,TP[nb.type].ros*wf*sf*mf*df*.30))ng[ny][nx]={...nb,fire:F.PRE,tick:0};}
+          if(rng()<Math.min(.93,TP[nb.type].ros*wf*sf*mf*df*.72))ng[ny][nx]={...nb,fire:F.PRE,tick:0};}
         // Ember spotting
-        if(rng()<.008*(1+windSpd/25)){
-          const dist=5+Math.floor(rng()*10),jx=(rng()-.5)*3,jy=(rng()-.5)*3;
+        if(rng()<.04*(1+windSpd/18)){
+          const dist=6+Math.floor(rng()*18),jx=(rng()-.5)*3,jy=(rng()-.5)*3;
           const ex=Math.round(x+Math.sin(wRad)*dist+jx),ey=Math.round(y-Math.cos(wRad)*dist+jy);
           if(ex>=0&&ex<G&&ey>=0&&ey<G){const em=g[ey][ex];if(em.fire===F.NONE&&TP[em.type].ros>0)ng[ey][ex]={...em,fire:F.PRE,tick:0};}
         }
@@ -492,7 +492,31 @@ function runEnsemble(terrain,params){
 }
 
 // ── Bounds / grid coord helpers ────────
-function mkBounds(lat,lng){const hl=(KM/2)/111.32,hln=hl/Math.cos(lat*Math.PI/180);return{south:lat-hl,north:lat+hl,west:lng-hln,east:lng+hln};}
+function mkBounds(lat,lng,km){
+  const k=km||KM,hl=k/2/111.32,hln=hl/Math.cos(lat*Math.PI/180);
+  return{south:lat-hl,north:lat+hl,west:lng-hln,east:lng+hln,km:k};
+}
+
+// Compute zone km that covers all hotspot points + center (clamped 10-60km)
+function calcZoneKM(hotspots,center){
+  if(!hotspots.length) return 20;
+  let mnLa=90,mxLa=-90,mnLn=180,mxLn=-180;
+  for(const f of hotspots){
+    const[ln,la]=f.geometry.coordinates;
+    if(la<mnLa)mnLa=la;if(la>mxLa)mxLa=la;
+    if(ln<mnLn)mnLn=ln;if(ln>mxLn)mxLn=ln;
+  }
+  mnLa=Math.min(mnLa,center.lat);mxLa=Math.max(mxLa,center.lat);
+  mnLn=Math.min(mnLn,center.lng);mxLn=Math.max(mxLn,center.lng);
+  const latKm=(mxLa-mnLa)*111.32;
+  const lngKm=(mxLn-mnLn)*111.32*Math.cos(center.lat*Math.PI/180);
+  return Math.max(10,Math.min(60,Math.max(latKm,lngKm)*1.35));
+}
+
+// Dynamic grid size: target ~200m cells, capped at 200 for performance
+function calcGridSize(zoneKm){
+  return Math.min(200,Math.max(80,Math.round(zoneKm*1000/200)));
+}
 function ll2g(lat,lng,b){return{gx:Math.max(0,Math.min(G-1,Math.round(((lng-b.west)/(b.east-b.west))*G))),gy:Math.max(0,Math.min(G-1,Math.round(((b.north-lat)/(b.north-b.south))*G)))};}
 
 // ── NWS weather ────────────────────────
@@ -517,7 +541,7 @@ async function fetchNWS(lat,lng){
 }
 
 // ── Project ────────────────────────────
-function project(ll){
+function project(ll){G=160;KM=20; // reset to default scale for manual projection
   const{lat,lng}=ll;
   const center=S.ignitions.length===0?ll:S.ignitions[0];
   const bounds=mkBounds(center.lat||lat,center.lng||lng);
@@ -610,7 +634,7 @@ function drawCompass(deg){
 // ── UI update ──────────────────────────
 function updateUI(){
   const pct=(S.step/(STP-1))*100;$('tbf').style.width=pct+'%';$('tbt').style.left=`calc(${pct}% - 8px)`;$('tslider').value=S.step;const tl=fmtT(S.step);$('tdsp').textContent=tl;$('tb-t').textContent=tl;$('wread').textContent=`${S.windSpd} mph @ ${S.windDeg}°`;updGM();
-  if(S.sim?.snapshots){const snap=S.sim.snapshots[S.step];let fl=0,ch=0,pre=0;snap.forEach(r=>r.forEach(c=>{if(c.fire===F.FLAME)fl++;else if(c.fire===F.PRE)pre++;else if(c.fire===F.CHAR)ch++;}));const tot=fl+ch+pre,ac=fmtAc(tot),pz=Math.round(tot/(G*G)*100);$('zbar').style.cssText=`height:100%;width:${pz}%;background:linear-gradient(90deg,var(--pb),var(--err));transition:width .3s`;$('zpct').textContent=`${pz}% of zone`;$('zac').textContent=`~${ac} acres · ${fl} flame`;
+  if(S.sim?.snapshots){const snap=S.sim.snapshots[S.step];let fl=0,ch=0,pre=0;snap.forEach(r=>r.forEach(c=>{if(c.fire===F.FLAME)fl++;else if(c.fire===F.PRE)pre++;else if(c.fire===F.CHAR)ch++;}));const tot=fl+ch+pre,ac=fmtAc(tot),pz=Math.round(tot/(G*G)*100);const cellM2=Math.round(KM*1000/G);const zr=$('zres');if(zr)zr.textContent=`${G}×${G} · ${cellM2}m/cell`;$('zbar').style.cssText=`height:100%;width:${pz}%;background:linear-gradient(90deg,var(--pb),var(--err));transition:width .3s`;$('zpct').textContent=`${pz}% of zone`;$('zac').textContent=`~${ac} acres · ${fl} flame`;
   const threat=fl>250?'CRITICAL':fl>100?'HIGH':fl>30?'MODERATE':fl>0?'LOW':'STANDBY';const tc={CRITICAL:'err',HIGH:'pri',MODERATE:'wrn',LOW:'ok',STANDBY:'dim'}[threat];chip('c-zone',`⚡ ${threat} · ${tl}`,tc);
   const threatClr={CRITICAL:'#F44336',HIGH:'#FF6D00',MODERATE:'#FFA726',LOW:'#FFEE58',STANDBY:'#66BB6A'}[threat];
   $('pstats').innerHTML=`<div class="srow"><span>Active flame</span><span style="color:#FF6D00">${fl}</span></div><div class="srow"><span>Pre-ignition</span><span style="color:#FFA726">${pre}</span></div><div class="srow"><span>Charred</span><span style="color:#795548">${ch}</span></div><div class="srow"><span>Est. acres</span><span style="color:#FF8F00">~${ac}</span></div><div class="srow"><span>Zone</span><span>${pz}%</span></div><div class="srow"><span>Threat</span><span style="color:${threatClr}">${threat}</span></div><div class="srow"><span>Wind</span><span>${S.windSpd} mph · ${S.windDeg}°</span></div><div class="srow"><span>Time</span><span>${tl}</span></div>`;}
@@ -819,15 +843,24 @@ async function autoProject(lat,lng,name,acres){
   chip('c-zone',`⏳ Loading ${name}…`,'pulse dim');
   toast(`🔥 Auto-projecting: ${name} (~${acres.toLocaleString()} acres)`,'i',6000);
 
-  const bounds=mkBounds(lat,lng);
-  const terrain=buildTerrain(lat,lng);
-
-  // Parallel fetch: NWS wind + NIFC perimeter + FIRMS hotspots
+  // First fetch hotspots to determine zone size, then build everything at scale
+  chip('c-zone','⏳ Fetching hotspots…','pulse dim');
+  const roughBounds=mkBounds(lat,lng,60); // wide initial fetch
   const[,perimFeats,firmsData]=await Promise.all([
     fetchNWS(lat,lng).catch(()=>null),
     fetchNIFCPerim(name).catch(()=>[]),
-    fetchFIRMS(bounds).catch(()=>({features:[],source:null}))
+    fetchFIRMS(roughBounds).catch(()=>({features:[],source:null}))
   ]);
+
+  // Scale zone and grid to fit ALL hotspots
+  const zoneKm=calcZoneKM(firmsData.features,{lat,lng});
+  G=calcGridSize(zoneKm);   // update global G
+  KM=zoneKm;                // update global KM
+  const cellM=Math.round(zoneKm*1000/G);
+  toast(`Zone: ${zoneKm.toFixed(0)} km · Grid: ${G}×${G} · ${cellM}m/cell`,'i',5000);
+
+  const bounds=mkBounds(lat,lng,zoneKm);
+  const terrain=buildTerrain(lat,lng);
 
   let initGrid=null;
   let statusParts=[];
