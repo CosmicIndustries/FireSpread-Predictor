@@ -346,6 +346,9 @@ button{font-family:inherit;cursor:pointer}
     <div class="trow" data-lay="incs"><span><span class="dsw" style="background:#FF6D00;border-radius:50%"></span>Wildfire Incidents (WFIGS)</span><div class="tog on" id="tog-incs"><div class="kn"></div></div></div>
     <div class="trow" data-lay="raws"><span><span class="dsw" style="background:#42A5F5;border-radius:50%"></span>RAWS Weather Stations</span><div class="tog" id="tog-raws"><div class="kn"></div></div></div>
     <div class="trow" data-lay="modis"><span><span class="dsw" style="background:#E91E63"></span>MODIS Thermal (NASA GIBS)</span><div class="tog" id="tog-modis"><div class="kn"></div></div></div>
+    <div class="trow" id="goes-row"><span><span class="dsw" style="background:#FF80AB"></span>GOES-East IR Band 7 (3.9μm)</span><div class="tog" id="tog-goes"><div class="kn"></div></div></div>
+    <div style="font-size:10px;color:var(--f4);padding:4px 4px 8px;font-family:'DM Mono',monospace" id="hs-status">IR hotspots: not loaded</div>
+    <button onclick="if(S.sim)fetchAllHotspots(S.sim.bounds).then(h=>{if(h.length)rerun();})" style="width:100%;padding:7px;background:var(--s2);border:1px solid var(--s3);color:var(--f2);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:6px">🛰 Refresh IR Hotspots Now</button>
     <div class="trow" data-lay="viirs_snpp" data-fetch="viirs"><span><span class="dsw" style="background:#FF1744;border-radius:50%"></span>VIIRS SNPP 24h (FIRMS)</span><div class="tog" id="tog-viirs_snpp"><div class="kn"></div></div></div>
     <div class="trow" data-lay="viirs_noaa20" data-fetch="viirs20"><span><span class="dsw" style="background:#FF6D00;border-radius:50%"></span>VIIRS NOAA-20 24h (FIRMS)</span><div class="tog" id="tog-viirs_noaa20"><div class="kn"></div></div></div>
     <div class="trow" data-lay="adsb"><span><span class="dsw" style="background:#90CAF9;border-radius:50%"></span>✈ Aerial Resources (ADS-B)</span><div class="tog" id="tog-adsb"><div class="kn"></div></div></div>
@@ -384,7 +387,10 @@ button{font-family:inherit;cursor:pointer}
       <div class="srci"><div class="sdot" id="s2"></div>NIFC · RAWS Stations</div>
       <div class="srci"><div class="sdot" id="s3"></div>NASA GIBS · MODIS Thermal</div>
       <div class="srci"><div class="sdot" id="s4"></div>NOAA NWS · Gridded Weather</div>
-      <div class="srci"><div class="sdot" id="s6"></div>NASA FIRMS · VIIRS SNPP/NOAA-20</div>
+      <div class="srci"><div class="sdot" id="s6"></div>NASA FIRMS VIIRS SNPP / NOAA-20 / MODIS</div>
+      <div class="srci"><div class="sdot" id="s10"></div>NASA EONET · Open Wildfire Events</div>
+      <div class="srci"><div class="sdot" id="s11"></div>IRWIN DOI · Active Incident Locations</div>
+      <div class="srci"><div class="sdot" id="s12"></div>GOES-East ABI Band 7 · NASA GIBS WMTS</div>
       <div class="srci"><div class="sdot" id="s7"></div>OpenSky Network · ADS-B</div>
       <div class="srci"><div class="sdot" id="s8"></div>OSM Overpass · Community Risk</div>
       <div class="srci"><div class="sdot" id="s9"></div>OSM Overpass · Building Footprints</div>
@@ -961,6 +967,19 @@ function bindUI(){
   $('e-report')?.addEventListener('click',generateReport);
 
   // ── Diurnal toggle ──────────────────────────────────────────────────────────
+  // GOES IR layer toggle
+  let goesLayer=null;
+  $('goes-row')?.addEventListener('click',()=>{
+    const tog=$('tog-goes'); tog.classList.toggle('on');
+    if(tog.classList.contains('on')){
+      if(!goesLayer) goesLayer=getGOESLayer();
+      goesLayer.addTo(S.map);
+      toast("GOES-East Band 7 IR loaded (today's date)","i");
+    } else if(goesLayer){
+      S.map.removeLayer(goesLayer);
+    }
+  });
+
   $('diurnal-tog-row')?.addEventListener('click',()=>{
     const tog=$('tog-diurnal'); tog.classList.toggle('on');
     diurnalEnabled=tog.classList.contains('on');
@@ -1193,88 +1212,272 @@ function fetchNIFCPerim(name){
 }
 
 // Fetch NASA FIRMS VIIRS hotspots (WFS, no key) within bounds
-async function fetchFIRMS(bounds){
-  const{south,north,west,east}=bounds;
-  // Try VIIRS SNPP 24h, fall back to MODIS 24h
-  const layers=['fires_viirs_snpp_24','fires_modis_24','fires_viirs_noaa20_24'];
-  for(const layer of layers){
-    try{
-      const url=`https://firms.modaps.eosdis.nasa.gov/mapserver/wfs?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=${layer}&OUTPUTFORMAT=application/json&BBOX=${west},${south},${east},${north},EPSG:4326&maxFeatures=500`;
-      const r=await fetch(url,{signal:AbortSignal.timeout(9000)});
-      if(!r.ok)continue;
-      const d=await r.json();
-      if(d.features?.length){
-        $('s3').className='sdot';
-        return{features:d.features,source:layer};
-      }
-    }catch(e){/* try next */}
-  }
-  $('s3').className='sdot e';
-  return{features:[],source:null};
+// ═══════════════════════════════════════════════════════════════════════════
+//  LIVE IR HOTSPOT ENGINE
+//  Sources: FIRMS VIIRS SNPP · NOAA-20 · MODIS · EONET · IRWIN · GOES-R GIBS
+//  FRP-weighted ignition seeding · auto-refresh · age-banded rendering
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Live hotspot store — accumulated from all sources
+const HS = {
+  points: [],          // [{lat,lng,frp,conf,source,ageH,acqTime}]
+  lastFetch: null,
+  refreshTimer: null,
+  layer: null,
+};
+
+// Expand bbox by pad degrees for wider hotspot capture
+function expandBbox(b, pad=0.5){
+  return{south:b.south-pad,north:b.north+pad,west:b.west-pad,east:b.east+pad};
 }
 
-// Rasterize NIFC perimeter polygon to CA grid
-// Returns grid with CHAR inside perimeter, FLAME at fire edge
-function rasterizePerim(feat,bounds,terrain){
+// Parse FIRMS WFS GeoJSON feature → hotspot record
+function parseFIRMSFeature(f, source){
+  const p=f.properties||{};
+  const[lng,lat]=f.geometry?.coordinates||[null,null];
+  if(!lat||!lng) return null;
+  const frp=+(p.frp||p.FRP||p.fire_radiative_power||0);
+  const conf=(p.confidence||p.CONFIDENCE||p.conf||'n').toString();
+  const acqDate=p.acq_date||p.ACQ_DATE||p.date||'';
+  const acqTime=p.acq_time||p.ACQ_TIME||p.time||'0000';
+  // Compute age in hours from acquisition
+  let ageH=0;
+  try{
+    const dt=new Date(`${acqDate}T${String(acqTime).padStart(4,'0').replace(/(\d{2})(\d{2})/,'$1:$2')}Z`);
+    ageH=(Date.now()-dt.getTime())/3600000;
+  }catch(e){}
+  return{lat,lng,frp,conf:conf[0]?.toLowerCase()||'n',source,ageH,acqDate,acqTime};
+}
+
+// ── Source 1: FIRMS WFS (VIIRS SNPP + NOAA-20 + MODIS) ────────────────────
+async function fetchFIRMS_WFS(bounds){
+  const eb=expandBbox(bounds,0.8);
+  const bbox=`${eb.west},${eb.south},${eb.east},${eb.north},EPSG:4326`;
+  const layers=[
+    {name:'fires_viirs_snpp_24',   src:'VIIRS-SNPP'},
+    {name:'fires_viirs_noaa20_24', src:'VIIRS-NOAA20'},
+    {name:'fires_modis_24',        src:'MODIS'},
+    {name:'fires_viirs_snpp_sp',   src:'VIIRS-SNPP-48h'},
+  ];
+  const points=[];
+  for(const{name,src}of layers){
+    try{
+      const url=`https://firms.modaps.eosdis.nasa.gov/mapserver/wfs?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=${name}&OUTPUTFORMAT=application/json&BBOX=${bbox}&maxFeatures=2000`;
+      const r=await fetch(url,{signal:AbortSignal.timeout(12000),
+        headers:{'Accept':'application/json','Origin':location.origin}});
+      if(!r.ok) continue;
+      const d=await r.json();
+      const feats=d.features||[];
+      feats.forEach(f=>{const h=parseFIRMSFeature(f,src);if(h)points.push(h);});
+      if(points.length>0) break; // stop at first source with data
+    }catch(e){ /* next source */ }
+  }
+  return points;
+}
+
+// ── Source 2: NASA EONET (global open events, no key) ──────────────────────
+async function fetchEONET_Wildfires(bounds){
+  try{
+    const r=await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=100',
+      {signal:AbortSignal.timeout(10000)});
+    if(!r.ok) return[];
+    const d=await r.json();
+    const points=[];
+    for(const ev of d.events||[]){
+      for(const geo of ev.geometry||[]){
+        if(geo.type!=='Point') continue;
+        const[lng,lat]=geo.coordinates;
+        if(lat<bounds.south||lat>bounds.north||lng<bounds.west||lng>bounds.east) continue;
+        const ageH=(Date.now()-new Date(geo.date).getTime())/3600000;
+        points.push({lat,lng,frp:50,conf:'h',source:'EONET',ageH,title:ev.title});
+      }
+    }
+    return points;
+  }catch(e){return[];}
+}
+
+// ── Source 3: IRWIN (Integrated Reporting of Wildland-fire Information) ─────
+async function fetchIRWIN(bounds){
+  try{
+    const eb=expandBbox(bounds,0.2);
+    const where=`Latitude>=${eb.south} AND Latitude<=${eb.north} AND Longitude>=${eb.west} AND Longitude<=${eb.east}`;
+    const url=`https://irwin.doi.gov/arcgis/rest/services/IrwinPublicView/MapServer/0/query?where=${encodeURIComponent(where)}&outFields=IncidentName,DiscoveryAcres,Latitude,Longitude,FireDiscoveryDateTime&f=json&resultRecordCount=100`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(10000)});
+    if(!r.ok) return[];
+    const d=await r.json();
+    const points=[];
+    for(const feat of d.features||[]){
+      const p=feat.attributes||{};
+      if(!p.Latitude||!p.Longitude) continue;
+      const ageH=p.FireDiscoveryDateTime?(Date.now()-p.FireDiscoveryDateTime)/3600000:48;
+      // Use acres as FRP proxy (larger = more intense)
+      const frp=Math.min(500,Math.sqrt(p.DiscoveryAcres||1)*10);
+      points.push({lat:p.Latitude,lng:p.Longitude,frp,conf:'h',source:'IRWIN',ageH,name:p.IncidentName});
+    }
+    return points;
+  }catch(e){return[];}
+}
+
+// ── Source 4: Synthetic hotspots from NIFC perimeter edge (always available) ─
+async function fetchPerimeterHotspots(bounds, perimFeats){
+  if(!perimFeats?.length) return[];
+  const feat=perimFeats[0];
   const geom=feat.geometry;
   let rings=[];
-  if(geom.type==='Polygon') rings=geom.coordinates.map(r=>r);
-  else if(geom.type==='MultiPolygon') rings=geom.coordinates.flatMap(p=>p);
-  const outer=rings.filter((_,i)=>i%2===0); // outer rings only (even index)
-
-  const lngs=bounds.east-bounds.west, lats=bounds.north-bounds.south;
-  const grid=terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0})));
-
-  let charCount=0;
-  for(let y=0;y<G;y++){
-    const lat=bounds.north-(y+.5)/G*lats;
-    for(let x=0;x<G;x++){
-      const lng=bounds.west+(x+.5)/G*lngs;
-      let inside=false;
-      for(const ring of rings){ if(pip(lng,lat,ring)) inside=!inside; }
-      if(inside&&grid[y][x].type!==T.WATER){
-        grid[y][x]={...grid[y][x],fire:F.CHAR,tick:99,crown:false};
-        charCount++;
-      }
+  if(geom.type==='Polygon') rings=geom.coordinates;
+  else if(geom.type==='MultiPolygon') rings=geom.coordinates.flat(1);
+  const points=[];
+  // Sample perimeter edges as hotspot proxies every ~500m
+  for(const ring of rings.slice(0,3)){
+    const step=Math.max(1,Math.floor(ring.length/60));
+    for(let i=0;i<ring.length;i+=step){
+      const[lng,lat]=ring[i];
+      if(lat<bounds.south||lat>bounds.north||lng<bounds.west||lng>bounds.east) continue;
+      points.push({lat,lng,frp:80,conf:'h',source:'NIFC-Perimeter',ageH:1});
     }
   }
-
-  // Mark perimeter edge cells as FLAME
-  const eg=grid.map(r=>r.map(c=>({...c})));
-  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
-    if(grid[y][x].fire!==F.CHAR||TP[grid[y][x].type].ros===0) continue;
-    let edge=false;
-    for(let dy=-1;dy<=1&&!edge;dy++) for(let dx=-1;dx<=1&&!edge;dx++){
-      if(!dx&&!dy) continue;
-      const nx=x+dx,ny=y+dy;
-      if(nx<0||nx>=G||ny<0||ny>=G||grid[ny]?.[nx]?.fire===F.NONE) edge=true;
-    }
-    if(edge) eg[y][x]={...grid[y][x],fire:F.FLAME,tick:0,crown:false};
-  }
-  return{grid:eg,charCount};
+  return points;
 }
 
-// Overlay FIRMS hotspot points onto grid as FLAME cells
-function overlayHotspots(grid,hotspots,bounds){
+// ── Master hotspot fetch with source cascade ───────────────────────────────
+async function fetchAllHotspots(bounds, perimFeats=[]){
+  chip('c-data','🛰 Fetching IR…','pulse dim');
+  updateHotspotStatus('Fetching FIRMS + EONET + IRWIN…','load');
+
+  const [firmsPoints,eonetPoints,irwinPoints,perimPoints]=await Promise.allSettled([
+    fetchFIRMS_WFS(bounds),
+    fetchEONET_Wildfires(bounds),
+    fetchIRWIN(bounds),
+    fetchPerimeterHotspots(bounds,perimFeats),
+  ]).then(results=>results.map(r=>r.status==='fulfilled'?r.value:[]));
+
+  // Merge all, deduplicate by proximity (>0.01° = ~1km apart)
+  const all=[...firmsPoints,...eonetPoints,...irwinPoints,...perimPoints];
+  const deduped=[];
+  for(const pt of all){
+    const dup=deduped.find(p=>Math.abs(p.lat-pt.lat)<0.01&&Math.abs(p.lng-pt.lng)<0.01);
+    if(!dup) deduped.push(pt);
+    else if(pt.frp>dup.frp) Object.assign(dup,pt); // keep highest FRP
+  }
+
+  HS.points=deduped;
+  HS.lastFetch=Date.now();
+
+  const srcBreakdown={
+    FIRMS:firmsPoints.length,
+    EONET:eonetPoints.length,
+    IRWIN:irwinPoints.length,
+    Perimeter:perimPoints.length,
+  };
+  const totalStr=Object.entries(srcBreakdown).filter(([,n])=>n>0).map(([k,n])=>`${n} ${k}`).join(' · ');
+  updateHotspotStatus(`${deduped.length} hotspots: ${totalStr||'none'}`, deduped.length>0?'ok':'warn');
+
+  if(deduped.length>0){
+    renderHotspotLayer(deduped);
+    $('s6').className='sdot';
+    chip('c-data',`🛰 ${deduped.length} IR hotspots`,'ok');
+  } else {
+    $('s6').className='sdot e';
+    chip('c-data','⚠ No IR data','wrn');
+  }
+
+  return deduped;
+}
+
+// ── Hotspot map layer rendering ────────────────────────────────────────────
+function renderHotspotLayer(points){
+  if(HS.layer){ S.map.removeLayer(HS.layer); }
+  HS.layer=L.layerGroup();
+  points.forEach(p=>{
+    // Age banding: <3h = bright, 3-12h = medium, 12-24h = faded, >24h = dim
+    const ageFade=p.ageH<3?1:p.ageH<12?0.8:p.ageH<24?0.55:0.3;
+    // FRP sizing: low=5px, high=14px
+    const rad=Math.max(4,Math.min(14,4+Math.log10(Math.max(1,p.frp))*3));
+    // Color by confidence: high=red, nominal=orange, low=yellow, unknown=grey
+    const color=p.conf==='h'?'#F44336':p.conf==='n'?'#FF6D00':p.conf==='l'?'#FFC107':'#90A4AE';
+    const m=L.circleMarker([p.lat,p.lng],{
+      radius:rad,
+      color:'rgba(0,0,0,0.25)',weight:1,
+      fillColor:color,
+      fillOpacity:ageFade*0.9,
+      pane:'overlayPane',
+    });
+    const srcIcon={VIIRS_SNPP:'🛰',VIIRS_NOAA20:'🛰','VIIRS-SNPP':'🛰','VIIRS-NOAA20':'🛰',MODIS:'🛰',EONET:'🌍',IRWIN:'🚒','NIFC-Perimeter':'🔥'}[p.source]||'📡';
+    m.bindTooltip(`${srcIcon} ${p.source}<br>FRP: ${p.frp>0?p.frp.toFixed(0)+' MW':'N/A'} · Conf: ${p.conf.toUpperCase()}<br>Age: ${p.ageH<1?'<1h':p.ageH.toFixed(0)+'h'}`,
+      {permanent:false,sticky:true,className:'leaflet-tooltip-dark'});
+    HS.layer.addLayer(m);
+  });
+  if(S.vis.viirs_snpp||S.vis.viirs_noaa20||true) HS.layer.addTo(S.map);
+}
+
+// ── FRP-weighted ignition seeding ──────────────────────────────────────────
+// Hotspots seed FLAME cells; high-FRP cells seed larger clusters and set crown
+function seedHotspotsToGrid(grid, points, bounds){
+  if(!points.length) return grid;
   const lngs=bounds.east-bounds.west,lats=bounds.north-bounds.south;
   const g=grid.map(r=>r.map(c=>({...c})));
-  let count=0;
-  for(const feat of hotspots){
-    const[lng,lat]=feat.geometry.coordinates;
-    const gx=Math.max(0,Math.min(G-1,Math.round(((lng-bounds.west)/lngs)*G)));
-    const gy=Math.max(0,Math.min(G-1,Math.round(((bounds.north-lat)/lats)*G)));
-    if(g[gy][gx].type===T.WATER) continue;
-    g[gy][gx]={...g[gy][gx],fire:F.FLAME,tick:0};
-    // Spread hotspot to 1-cell ring (VIIRS pixels ~375m, our cells ~50m)
-    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+  const maxFRP=Math.max(...points.map(p=>p.frp),1);
+  let seeded=0;
+  for(const pt of points){
+    if(pt.lat<bounds.south||pt.lat>bounds.north||pt.lng<bounds.west||pt.lng>bounds.east) continue;
+    const gx=Math.max(0,Math.min(G-1,Math.round(((pt.lng-bounds.west)/lngs)*G)));
+    const gy=Math.max(0,Math.min(G-1,Math.round(((bounds.north-pt.lat)/lats)*G)));
+    if(!g[gy]?.[gx]) continue;
+    // FRP-scaled ignition radius: low FRP = 1 cell, high FRP = 4 cells
+    const frpRatio=Math.min(1,pt.frp/maxFRP);
+    const radius=Math.round(1+frpRatio*3);
+    // Age weighting: <6h = FLAME, 6-24h = mix, >24h = CHAR seed
+    const fireState=pt.ageH<6?F.FLAME:pt.ageH<24?F.FLAME:F.CHAR;
+    // Crown flag for high-FRP forest cells
+    const isCrown=frpRatio>0.6&&g[gy][gx].type===T.FOREST;
+    for(let dy=-radius;dy<=radius;dy++) for(let dx=-radius;dx<=radius;dx++){
+      if(dx*dx+dy*dy>radius*radius) continue;
       const nx=gx+dx,ny=gy+dy;
-      if(nx<0||nx>=G||ny<0||ny>=G||g[ny][nx].type===T.WATER) continue;
-      if(g[ny][nx].fire===F.NONE) g[ny][nx]={...g[ny][nx],fire:F.PRE,tick:0};
+      if(!g[ny]?.[nx]||g[ny][nx].type===T.WATER) continue;
+      if(g[ny][nx].fire===F.CHAR) continue; // don't overwrite char
+      g[ny][nx]={...g[ny][nx],fire:fireState,tick:0,crown:isCrown,frp:pt.frp};
     }
-    count++;
+    seeded++;
   }
-  return{grid:g,count};
+  return{grid:g,seeded};
 }
+
+// ── Auto-refresh every 10 minutes ─────────────────────────────────────────
+function startHotspotRefresh(bounds, perimFeats=[]){
+  clearInterval(HS.refreshTimer);
+  HS.refreshTimer=setInterval(async()=>{
+    if(!S.map) return;
+    const fresh=await fetchAllHotspots(bounds,perimFeats);
+    // If we have an active sim, re-seed and rerun
+    if(S.sim&&fresh.length){
+      const{grid:newGrid}=seedHotspotsToGrid(
+        S.sim.terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0,crown:false}))),
+        fresh,S.sim.bounds);
+      S.sim.params.initGrid=newGrid;
+      rerun();
+      toast(`IR refresh: ${fresh.length} hotspots → sim updated`,'i',3000);
+    }
+  },600000); // 10 min
+}
+
+// ── Hotspot status widget ─────────────────────────────────────────────────
+function updateHotspotStatus(msg, state='ok'){
+  const el=$('hs-status'); if(!el) return;
+  el.textContent=msg;
+  el.style.color=state==='ok'?'var(--ok)':state==='warn'?'var(--wrn)':state==='load'?'var(--inf)':'var(--err)';
+}
+
+// ── GOES-R WMTS tiles (visual IR layer, NASA GIBS) ────────────────────────
+function getGOESLayer(){
+  const now=new Date();
+  const dateStr=now.toISOString().split('T')[0];
+  // GOES-R ABI Band 7 (3.9μm shortwave IR — fire detection band)
+  return L.tileLayer(
+    `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band7_Clean_Infrared/default/${dateStr}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`,
+    {attribution:'NASA GIBS · GOES-East',maxNativeZoom:7,maxZoom:18,opacity:0.65}
+  );
+}
+
 
 // Main auto-projection entry point (called from incident popup button)
 async function autoProject(lat,lng,name,acres){
@@ -1293,19 +1496,25 @@ async function autoProject(lat,lng,name,acres){
   // First fetch hotspots to determine zone size, then build everything at scale
   chip('c-zone','⏳ Fetching hotspots…','pulse dim');
   const roughBounds=mkBounds(lat,lng,60); // wide initial fetch
-  const[nwsResult,perimFeats,firmsData,rawsStations]=await Promise.all([
+  // Parallel fetch: NWS wind, NIFC perimeter, RAWS stations
+  const[nwsResult,perimFeats,rawsStations]=await Promise.all([
     fetchNWSSequence(lat,lng).catch(()=>null),
     fetchNIFCPerim(name).catch(()=>[]),
-    fetchFIRMS(roughBounds).catch(()=>({features:[],source:null})),
     fetchRAWSNear(roughBounds).catch(()=>[])
   ]);
   if(rawsStations.length){
     toast(`${rawsStations.length} RAWS station(s) → spatial wind field`,'o');
     chip('c-mode',`💨 ${rawsStations.length} RAWS · NWS ${(nwsResult?.windSteps?.length/12||0).toFixed(0)}h`,'inf');
   }
+  // Fetch all IR hotspot sources (FIRMS + EONET + IRWIN + perimeter edge)
+  chip('c-zone','⏳ Loading IR hotspots…','pulse dim');
+  const hotspots=await fetchAllHotspots(roughBounds,perimFeats).catch(()=>[]);
+  startHotspotRefresh(roughBounds,perimFeats);
+  // Scale zone to hotspot extent
+  const hsForZone=hotspots.length?hotspots.map(h=>({geometry:{coordinates:[h.lng,h.lat]}})):[];
 
   // Scale zone and grid to fit ALL hotspots
-  const zoneKm=calcZoneKM(firmsData.features,{lat,lng});
+  const zoneKm=calcZoneKM(hsForZone,{lat,lng});
   G=calcGridSize(zoneKm);   // update global G
   KM=zoneKm;                // update global KM
   const cellM=Math.round(zoneKm*1000/G);
@@ -1325,14 +1534,14 @@ async function autoProject(lat,lng,name,acres){
     toast(`Perimeter loaded · ~${fmtAc(charCount)} acres in zone`,'o');
   }
 
-  // Overlay FIRMS hotspots
-  if(firmsData.features.length>0){
-    const base=initGrid||(terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0}))));
-    const{grid,count}=overlayHotspots(base,firmsData.features,bounds);
-    initGrid=grid;
-    const src=firmsData.source?.includes('viirs')?'VIIRS':firmsData.source?.includes('modis')?'MODIS':'NASA';
-    statusParts.push(`${count} ${src} hotspots`);
-    toast(`${count} ${src} hotspot(s) → FLAME cells`,'o');
+  // Seed IR hotspots (FRP-weighted, multi-source)
+  if(hotspots.length>0){
+    const base=initGrid||(terrain.grid.map(r=>r.map(c=>({...c,fire:F.NONE,tick:0,crown:false}))));
+    const{grid:seededGrid,seeded}=seedHotspotsToGrid(base,hotspots,bounds);
+    initGrid=seededGrid;
+    const highFRP=hotspots.filter(h=>h.frp>100).length;
+    statusParts.push(`${seeded} IR cells seeded${highFRP?' ('+highFRP+' high-FRP)':''}`);
+    toast(`${hotspots.length} hotspots → ${seeded} grid cells seeded (FRP-weighted)`,'o');
   }
 
   // Nothing loaded — fall back to center ignition
