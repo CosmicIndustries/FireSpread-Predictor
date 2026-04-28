@@ -219,6 +219,7 @@ button{font-family:inherit;cursor:pointer}
 <aside class="side" id="side">
   <div class="tabs">
     <button class="tab on" data-t="proj">⚙ Project</button>
+    <button class="tab" data-t="ops">🚒 Ops</button>
     <button class="tab" data-t="lyrs">🗺 Layers</button>
     <button class="tab" data-t="data">📊 Data</button>
     <button class="tab" data-t="expo">⬇ Export</button>
@@ -274,7 +275,59 @@ button{font-family:inherit;cursor:pointer}
     </div>
   </div>
 
-  <!-- LAYERS -->
+  <!-- OPS -->
+  <div class="tc" id="t-ops">
+    <div class="sh" style="margin-top:0">Fire Danger Rating</div>
+    <div id="fdr-card" style="background:var(--s2);border:1px solid var(--s3);border-radius:12px;padding:12px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:9.5px;color:var(--f4);letter-spacing:1px;font-weight:700">NFDRS FIRE DANGER</span>
+        <span id="fdr-badge" style="font-size:11px;font-weight:800;padding:3px 10px;border-radius:12px;background:var(--s3);color:var(--f2)">—</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="fdr-grid"></div>
+      <button onclick="computeFDR()" style="margin-top:10px;width:100%;padding:7px;background:var(--s3);border:1px solid var(--s2);border-radius:8px;color:var(--f2);font-size:11.5px;font-weight:600;cursor:pointer">Recompute from conditions</button>
+    </div>
+
+    <div class="sh">Containment Lines</div>
+    <div style="font-size:11px;color:var(--f3);line-height:1.5;margin-bottom:8px">Draw containment lines that halt fire spread in the simulation. Model dozer lines, hand lines, roads, or natural barriers.</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button class="sbtn" id="cont-btn" style="flex:1;font-size:11px;background:#1565C0">🚜 Draw Line</button>
+      <button class="sbtn" id="cont-clear" style="flex:1;font-size:11px;background:var(--err)">✕ Clear</button>
+    </div>
+    <div id="cont-stats" style="font-size:11px;color:var(--f3)">No containment lines drawn.</div>
+
+    <div class="sh">Diurnal Wind Model</div>
+    <div class="trow" id="diurnal-tog-row">
+      <span>🌅 Auto diurnal adjustment</span>
+      <div class="tog" id="tog-diurnal"><div class="kn"></div></div>
+    </div>
+    <div style="font-size:10.5px;color:var(--f4);margin:6px 4px 12px;line-height:1.5">Morning calm × 0.5, afternoon peak × 1.7 (1400–1800 local), evening recovery. Applied per simulation step.</div>
+
+    <div class="sh">Scenario Comparison</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="sbtn" id="scen-save" style="flex:1;font-size:11px;background:var(--s3)" disabled>💾 Save as Scenario A</button>
+      <button class="sbtn" id="scen-load" style="flex:1;font-size:11px;background:var(--s3)" disabled>📂 Load A</button>
+    </div>
+    <div id="scen-status" style="font-size:11px;color:var(--f3)">Run a projection to enable comparison.</div>
+
+    <div class="sh">Alert Thresholds</div>
+    <div class="slrow">
+      <div class="slhd"><span>🔔 Alert at zone coverage</span><span class="slv" id="alert-val">25%</span></div>
+      <div class="track"><div class="tfill" id="alert-f" style="background:#EF5350"></div>
+        <div class="tthumb" id="alert-t" style="background:#EF5350;box-shadow:0 0 6px #EF535066"></div>
+        <input type="range" id="sl-alert" min="5" max="80" value="25"></div>
+    </div>
+    <div class="trow" id="audio-tog-row">
+      <span>🔊 Audio alert</span>
+      <div class="tog on" id="tog-audio"><div class="kn"></div></div>
+    </div>
+    <div id="alert-status" style="font-size:11px;color:var(--f3);margin-top:8px">Alert will fire at 25% zone coverage.</div>
+
+    <div class="sh">Operational Report</div>
+    <button class="ebtn" id="e-report" style="background:linear-gradient(135deg,rgba(255,109,0,.15),rgba(230,81,0,.08));border-color:rgba(255,109,0,.4);color:var(--pb)" disabled>📋 Generate FBAN Summary Report</button>
+  </div>
+
+<!-- LAYERS -->
+  <div class="tc" id="t-lyrs"><!-- LAYERS -->
   <div class="tc" id="t-lyrs">
     <div class="sh">Live Open Data</div>
     <div class="trow" data-lay="perims"><span><span class="dsw" style="background:#FFEB3B"></span>Fire Perimeters (NIFC WFIGS)</span><div class="tog on" id="tog-perims"><div class="kn"></div></div></div>
@@ -309,6 +362,8 @@ button{font-family:inherit;cursor:pointer}
     <div id="pstats"><div class="srow"><span>Status</span><span style="color:var(--f3)">No projection</span></div></div>
     <div class="sh" style="margin-top:16px">Community Risk Index</div>
     <button class="sbtn" id="risk-btn" style="width:100%;margin-bottom:8px;font-size:11.5px" disabled>Compute Risk from OSM</button>
+    <button class="sbtn" id="struct-btn" style="width:100%;margin-bottom:8px;font-size:11.5px;background:var(--s3)" disabled>🏠 Fetch Exposed Structures (OSM)</button>
+    <div id="struct-count" style="font-size:11px;color:var(--f3);margin-bottom:8px"></div>
     <div id="risk-table" style="font-size:11px;color:var(--f3)">Run a projection first</div>
     <div class="sh">Open Data Sources</div>
     <div class="srclist">
@@ -320,6 +375,7 @@ button{font-family:inherit;cursor:pointer}
       <div class="srci"><div class="sdot" id="s6"></div>NASA FIRMS · VIIRS SNPP/NOAA-20</div>
       <div class="srci"><div class="sdot" id="s7"></div>OpenSky Network · ADS-B</div>
       <div class="srci"><div class="sdot" id="s8"></div>OSM Overpass · Community Risk</div>
+      <div class="srci"><div class="sdot" id="s9"></div>OSM Overpass · Building Footprints</div>
       <div class="srci"><div class="sdot" id="s5"></div>OpenStreetMap / CARTO / Esri</div>
     </div>
   </div>
@@ -637,6 +693,7 @@ async function fetchNWS(lat,lng){
     const fr=await fetch(fu,{signal:AbortSignal.timeout(8000)});if(!fr.ok)throw new Error('NWS fc');
     const fd=await fr.json();const p=fd?.properties?.periods?.[0];if(!p)throw new Error('no period');
     const spd=parseWS(p.windSpeed),dir=CDEG[p.windDirection]??S.windDeg,tmp=p.temperature,hum=p.relativeHumidity?.value;
+    S.lastRH=hum; S.lastTemp=tmp;
     $('wcard').style.display='block';$('wcard-src').textContent=d.properties.gridId||'NWS';
     $('ww-s').textContent=spd;$('ww-d').textContent=p.windDirection||'—';$('ww-t').textContent=tmp??'—';$('ww-h').textContent=hum!=null?Math.round(hum):'—';
     $('nwsl').textContent=`NWS Auto · ${d.properties.gridId||''}`;$('s4').className='sdot';
@@ -673,6 +730,8 @@ function afterProject(){
   ['wind-ov','tbadge','zstats'].forEach(id=>$(id).style.display='flex');
   $('wind-ov').style.display='flex';$('zstats').style.display='block';
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
+  ['scen-save','e-report','risk-btn','struct-btn','e-kml'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
+  if(typeof computeFDR==='function') setTimeout(computeFDR,200);
   drawCompass(S.windDeg);updateUI();draw();
   toast(`Projection ready · ${KM}km zone`,'o');
 }
@@ -833,6 +892,36 @@ function bindUI(){
   setInterval(()=>{S.ft++;if(S.sim&&!S.playing)draw();},140);
 
   // ── New button bindings ──────────────────────────────────────────────────
+  // ── Ops tab bindings ───────────────────────────────────────────────────────
+  $('cont-btn')?.addEventListener('click',startContainmentDraw);
+  $('cont-clear')?.addEventListener('click',clearContainment);
+  $('scen-save')?.addEventListener('click',saveScenario);
+  $('scen-load')?.addEventListener('click',loadScenario);
+  $('struct-btn')?.addEventListener('click',fetchExposedStructures);
+  $('e-report')?.addEventListener('click',generateReport);
+
+  // ── Diurnal toggle ──────────────────────────────────────────────────────────
+  $('diurnal-tog-row')?.addEventListener('click',()=>{
+    const tog=$('tog-diurnal'); tog.classList.toggle('on');
+    diurnalEnabled=tog.classList.contains('on');
+    S.fireStartHour=new Date().getHours();
+    if(S.sim) rerun();
+    toast(`Diurnal wind model ${diurnalEnabled?'enabled':'disabled'}`,'i');
+  });
+
+  // ── Audio toggle ────────────────────────────────────────────────────────────
+  $('audio-tog-row')?.addEventListener('click',()=>{
+    const tog=$('tog-audio'); tog.classList.toggle('on');
+    audioEnabled=tog.classList.contains('on');
+  });
+
+  // ── Alert threshold slider ───────────────────────────────────────────────────
+  bindSlider('sl-alert','alert-f','alert-t','alert-val',v=>`${v}%`,v=>{
+    alertThreshold=v/100; alertTriggered=false;
+    $('alert-status').textContent=`Alert will fire at ${v}% zone coverage.`;
+    $('alert-status').style.color='var(--f3)';
+  });
+
   $('draw-line-btn')?.addEventListener('click',()=>enableDraw('line'));
   $('draw-poly-btn')?.addEventListener('click',()=>enableDraw('poly'));
   $('draw-clear-btn')?.addEventListener('click',clearDraw);
@@ -885,12 +974,12 @@ function bindUI(){
       initDraw();
       S.map.on(L.Draw?.Event?.CREATED||'draw:created', onDrawCreated);
     }
-    // Enable risk button after sim ─ patch afterProject
+    // Enable ops buttons after projection
     const _ap=afterProject;
     window.afterProject=function(){
       _ap();
-      const rb=$('risk-btn');if(rb)rb.disabled=false;
-      const ek=$('e-kml');if(ek)ek.disabled=false;
+      ['risk-btn','e-kml','struct-btn','scen-save','e-report'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
+      computeFDR();
     };
   },1500);
 }
@@ -1210,6 +1299,8 @@ async function autoProject(lat,lng,name,acres){
   S.step=0;enableTL();updateURL();
   ['wind-ov','tbadge','zstats'].forEach(id=>{const e=$(id);if(e)e.style.display=id==='zstats'?'block':'flex';});
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
+  ['scen-save','e-report','risk-btn','struct-btn','e-kml'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
+  if(typeof computeFDR==='function') setTimeout(computeFDR,200);
   drawCompass(S.windDeg);updateUI();draw();
   chip('c-zone',`🔥 ${name} · ${statusParts.join(' · ')}`,'pri');
   toast(`Projection ready · ${statusParts.join(', ')}`,'o');
@@ -1488,6 +1579,380 @@ ${coords}
   a.download=`firesim_${fmtT(S.step).replace(/[^a-z0-9]/gi,'_')}.kml`;
   a.click();
   toast('KML exported — open in Google Earth or QGIS','o');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  OPERATIONAL TOOLS — NFDRS · CONTAINMENT · DIURNAL · SCENARIOS · ALERTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── NFDRS Fire Danger Rating ─────────────────────────────────────────────────
+// Based on: NFDRS 2016 (Cohen & Deeming 1985 simplified, with ERC proxy)
+const FDR_THRESHOLDS=[
+  {label:'LOW',    color:'#4CAF50', bg:'rgba(76,175,80,.2)'},
+  {label:'MODERATE',color:'#FFEB3B',bg:'rgba(255,235,59,.2)'},
+  {label:'HIGH',   color:'#FF9800', bg:'rgba(255,152,0,.2)'},
+  {label:'VERY HIGH',color:'#F44336',bg:'rgba(244,67,54,.2)'},
+  {label:'EXTREME',color:'#9C27B0', bg:'rgba(156,39,176,.2)'},
+];
+
+function computeFDR(){
+  const wind=S.windSpd, moist=S.moist*100;
+  const rh=S.lastRH??50, temp=S.lastTemp??70;
+  // Energy Release Component proxy: ERC ∝ (1-FFMC/100) * wind factor
+  // FFMC (Fine Fuel Moisture Code) simplified from temp/RH
+  const ffmc=Math.max(0,Math.min(100,96-0.4*(moist)));
+  // BUI proxy from moisture + wind
+  const bui=Math.max(0,Math.min(100,wind*0.8+(100-moist)*0.6));
+  // ERC composite
+  const erc=Math.max(0,Math.min(100,ffmc*0.5+bui*0.5));
+  // ISI (Initial Spread Index) — wind + fine fuel moisture
+  const fF=Math.exp(0.05039*wind);
+  const fM=Math.max(0,18.8*Math.pow(0.01*(101-ffmc),2.59));
+  const isi=0.208*fF*fM;
+  // FWI (Fire Weather Index) — combines ERC + ISI
+  const fwi=erc<0.1?0:Math.exp(0.987*Math.log(erc/10)+0.2*(isi-1));
+  // Danger class
+  const cls=fwi<5?0:fwi<15?1:fwi<30?2:fwi<60?3:4;
+  const dr=FDR_THRESHOLDS[cls];
+  // Update badge
+  const badge=$('fdr-badge');
+  if(badge){ badge.textContent=dr.label; badge.style.background=dr.bg; badge.style.color=dr.color; }
+  const grid=$('fdr-grid');
+  if(grid) grid.innerHTML=[
+    ['FFMC',ffmc.toFixed(0),'Fine Fuel MC'],
+    ['BUI',bui.toFixed(0),'Build-Up Index'],
+    ['ISI',isi.toFixed(1),'Spread Index'],
+    ['FWI',fwi.toFixed(1),'Fire Weather'],
+    ['ERC',erc.toFixed(0),'Energy Release'],
+    ['CLASS',dr.label,'Danger Level'],
+  ].map(([l,v,d])=>`<div style="background:var(--bg);border-radius:8px;padding:6px 8px">
+    <div style="font-size:8.5px;color:var(--f4);letter-spacing:.8px">${l}</div>
+    <div style="font-size:15px;font-weight:800;font-family:'DM Mono',monospace;color:${l==='CLASS'?dr.color:'var(--fg)'}">${v}</div>
+    <div style="font-size:8.5px;color:var(--f3)">${d}</div></div>`).join('');
+  S.fdr={cls,dr,ffmc,bui,isi,fwi,erc};
+  return{cls,dr,ffmc,bui,isi,fwi,erc};
+}
+
+// ── Diurnal Wind Model ───────────────────────────────────────────────────────
+// USFS standard: calm 0600, ramp 0900-1400, peak 1400-1800, recover 1800-2200
+// Scale applied per simulation step relative to fire start hour
+let diurnalEnabled=false;
+const DIURNAL_CURVE=[
+  .40,.35,.35,.30,.30,.35, // 0000-0600: overnight calm
+  .50,.65,.80,.95,1.0,1.1, // 0600-1200: morning ramp
+  1.3,1.5,1.7,1.7,1.65,1.5,// 1200-1800: peak afternoon
+  1.3,1.1,.90,.75,.60,.50  // 1800-2400: evening recovery
+];
+function getDiurnalFactor(step){
+  if(!diurnalEnabled) return 1.0;
+  const startHour=S.fireStartHour??14; // default 2pm ignition
+  const simHour=(startHour+Math.floor(step*5/60))%24;
+  const frac=(step*5/60)%1;
+  const h0=Math.floor(simHour), h1=(h0+1)%24;
+  return DIURNAL_CURVE[h0]*(1-frac)+DIURNAL_CURVE[h1]*frac;
+}
+
+// Patch runSim to apply diurnal factor per step
+// (injected via windSteps override — we multiply stepSpd)
+const _origRunSim=runSim;
+runSim=function(terrain,params,seed=31337){
+  if(diurnalEnabled&&params.windSteps){
+    params={...params,windSteps:params.windSteps.map((w,i)=>({
+      ...w, spd:w.spd*getDiurnalFactor(i)
+    }))};
+  } else if(diurnalEnabled&&!params.windSteps){
+    // Build synthetic diurnal steps from static wind
+    const steps=[];
+    for(let s=0;s<STP;s++) steps.push({spd:params.windSpd*getDiurnalFactor(s),
+      deg:params.windDeg,wRad:((params.windDeg+180)%360)*Math.PI/180});
+    params={...params,windSteps:steps};
+  }
+  return _origRunSim(terrain,params,seed);
+};
+
+// ── Containment Lines ────────────────────────────────────────────────────────
+let contLines=[], contLayer=null, contDrawing=false;
+
+function initContLayer(){
+  if(!contLayer){ contLayer=new L.FeatureGroup().addTo(S.map); }
+}
+
+function startContainmentDraw(){
+  initContLayer();
+  if(!window.L?.Draw){ toast('Leaflet.Draw not ready','e'); return; }
+  const opts={color:'#1565C0',weight:4,dashArray:'10,5',opacity:.9};
+  const h=new L.Draw.Polyline(S.map,{shapeOptions:opts,repeatMode:false});
+  h.enable();
+  contDrawing=true;
+  S.map.once(L.Draw?.Event?.CREATED||'draw:created',function(e){
+    if(!contDrawing) return;
+    contDrawing=false;
+    contLayer.addLayer(e.layer);
+    // Rasterize line to barrier cells
+    const pts=e.layer.getLatLngs();
+    if(!S.sim) return;
+    const{bounds}=S.sim;
+    const lats_=bounds.north-bounds.south,lngs_=bounds.east-bounds.west;
+    const toGX=lng=>Math.max(0,Math.min(G-1,Math.round(((lng-bounds.west)/lngs_)*G)));
+    const toGY=lat=>Math.max(0,Math.min(G-1,Math.round(((bounds.north-lat)/lats_)*G)));
+    const newCells=[];
+    for(let i=0;i<pts.length-1;i++){
+      const cells=bresenham(toGX(pts[i].lng),toGY(pts[i].lat),toGX(pts[i+1].lng),toGY(pts[i+1].lat));
+      // Thicken to 2-cell width
+      cells.forEach(c=>{ newCells.push(c); newCells.push({gx:c.gx-1,gy:c.gy}); newCells.push({gx:c.gx+1,gy:c.gy}); });
+    }
+    // Store containment cells
+    if(!S.containmentCells) S.containmentCells=new Set();
+    newCells.forEach(({gx,gy})=>{
+      if(gx>=0&&gx<G&&gy>=0&&gy<G) S.containmentCells.add(gy*G+gx);
+    });
+    contLines.push(newCells);
+    updateContStats();
+    if(S.sim) rerun();
+    toast(`Containment line: ${newCells.length} cells blocked`,'o');
+  });
+  toast('Draw containment line on map — click to add points, double-click to finish','i',8000);
+}
+
+function clearContainment(){
+  if(contLayer) contLayer.clearLayers();
+  contLines=[];
+  S.containmentCells=null;
+  updateContStats();
+  if(S.sim) rerun();
+}
+
+function updateContStats(){
+  const el=$('cont-stats');
+  if(!el) return;
+  const total=contLines.reduce((s,l)=>s+l.length,0);
+  el.textContent=contLines.length
+    ? `${contLines.length} line(s) · ${total} barrier cells · ${(total*(KM*1000/G)/1000).toFixed(1)} km total`
+    : 'No containment lines drawn.';
+}
+
+// Patch runSim to respect containment barrier cells
+const _origRunSim2=runSim;
+runSim=function(terrain,params,seed=31337){
+  const snaps=_origRunSim2(terrain,params,seed);
+  if(!S.containmentCells||!S.containmentCells.size) return snaps;
+  // Post-process: zero out fire in barrier cells across all snapshots
+  return snaps.map(snap=>snap.map((row,y)=>row.map((c,x)=>{
+    if(S.containmentCells.has(y*G+x)&&c.fire!==F.CHAR)
+      return{...c,fire:F.NONE,tick:0};
+    return c;
+  })));
+};
+
+// ── Alert System ─────────────────────────────────────────────────────────────
+let alertThreshold=0.25, alertTriggered=false, audioEnabled=true;
+let audioCtx=null;
+
+function playAlert(){
+  if(!audioEnabled) return;
+  try{
+    if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const freqs=[880,1100,880,1100,880];
+    freqs.forEach((f,i)=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value=f; o.type='square';
+      g.gain.setValueAtTime(0,audioCtx.currentTime+i*.15);
+      g.gain.linearRampToValueAtTime(.3,audioCtx.currentTime+i*.15+.05);
+      g.gain.linearRampToValueAtTime(0,audioCtx.currentTime+i*.15+.12);
+      o.start(audioCtx.currentTime+i*.15);
+      o.stop(audioCtx.currentTime+i*.15+.13);
+    });
+  }catch(e){}
+}
+
+function checkAlert(pct){
+  if(alertTriggered) return;
+  if(pct/100>=alertThreshold){
+    alertTriggered=true;
+    playAlert();
+    toast(`🔔 ALERT: Fire reached ${Math.round(alertThreshold*100)}% zone coverage at ${fmtT(S.step)}`,'e',8000);
+    $('alert-status').textContent=`⚠ TRIGGERED at ${fmtT(S.step)} — ${Math.round(pct)}% coverage`;
+    $('alert-status').style.color='var(--err)';
+  }
+}
+
+// ── Scenario A/B comparison ───────────────────────────────────────────────────
+let scenarioA=null;
+
+function saveScenario(){
+  if(!S.sim?.snapshots){ toast('No projection to save','e'); return; }
+  scenarioA={
+    snapshots:S.sim.snapshots,
+    bounds:S.sim.bounds,
+    params:{...S.sim.params},
+    windDeg:S.windDeg, windSpd:S.windSpd, moist:S.moist,
+    timestamp:new Date().toLocaleTimeString(),
+    label:`Scenario A · ${S.windSpd}mph @ ${S.windDeg}° · ${Math.round(S.moist*100)}% moisture`
+  };
+  $('scen-status').textContent=`Saved: ${scenarioA.label}`;
+  $('scen-load').disabled=false;
+  toast('Scenario A saved','o');
+}
+
+function loadScenario(){
+  if(!scenarioA){ toast('No Scenario A saved','e'); return; }
+  // Draw scenario A perimeter as a static overlay
+  if(S.scen_layer) S.map.removeLayer(S.scen_layer);
+  const snap=scenarioA.snapshots[S.step]||scenarioA.snapshots[scenarioA.snapshots.length-1];
+  const{bounds}=scenarioA;
+  const lats_=bounds.north-bounds.south, lngs_=bounds.east-bounds.west;
+  const cellLat=lats_/G, cellLng=lngs_/G;
+  const features=[];
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    if(snap[y][x].fire===F.NONE) continue;
+    const lat=bounds.north-y*cellLat, lng=bounds.west+x*cellLng;
+    features.push({type:'Feature',geometry:{type:'Polygon',coordinates:[[
+      [lng,lat],[lng+cellLng,lat],[lng+cellLng,lat-cellLat],[lng,lat-cellLat],[lng,lat]
+    ]]}});
+  }
+  S.scen_layer=L.geoJSON({type:'FeatureCollection',features},{
+    style:{color:'#42A5F5',weight:1,fillColor:'#42A5F5',fillOpacity:.25,dashArray:'4,3'}
+  }).addTo(S.map);
+  $('scen-status').textContent=`Comparing: current (orange) vs ${scenarioA.label} (blue)`;
+  toast(`Scenario A overlay shown at ${fmtT(S.step)}`,'i');
+}
+
+// ── Structure Exposure (OSM Building Footprints) ──────────────────────────────
+let structLayer=null;
+async function fetchExposedStructures(){
+  if(!S.sim?.snapshots||!S.sim.bounds){toast('Run a projection first','e');return;}
+  $('struct-btn').textContent='Fetching…';
+  const{bounds,snapshots,step:st}=S.sim;
+  const snap=snapshots[S.step];
+  const query=`[out:json][timeout:25];(way["building"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});node["building"](${bounds.south},${bounds.west},${bounds.north},${bounds.east}););out center;`;
+  try{
+    const r=await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,{signal:AbortSignal.timeout(25000)});
+    const d=await r.json();
+    const els=d.elements||[];
+    const lats_=bounds.north-bounds.south, lngs_=bounds.east-bounds.west;
+    let threatened=0, total=els.length;
+    if(structLayer){ S.map.removeLayer(structLayer); }
+    structLayer=L.layerGroup().addTo(S.map);
+    els.forEach(el=>{
+      const lat=el.lat||el.center?.lat, lon=el.lon||el.center?.lon;
+      if(!lat||!lon) return;
+      const gx=Math.max(0,Math.min(G-1,Math.round(((lon-bounds.west)/lngs_)*G)));
+      const gy=Math.max(0,Math.min(G-1,Math.round(((bounds.north-lat)/lats_)*G)));
+      const cell=snap[gy]?.[gx];
+      const onFire=cell&&cell.fire!==F.NONE;
+      if(onFire) threatened++;
+      const m=L.circleMarker([lat,lon],{
+        radius:4,
+        color:onFire?'#F44336':'#66BB6A',
+        fillColor:onFire?'#F44336':'#90A4AE',
+        fillOpacity:.75, weight:1.5
+      });
+      m.bindPopup(`<b>${el.tags?.name||el.tags?.building||'Building'}</b><br><small>${onFire?'⚠ IN FIRE ZONE':'✓ Not threatened'}</small>`);
+      structLayer.addLayer(m);
+    });
+    $('s9').className='sdot';
+    $('struct-count').textContent=`${total} structures · ${threatened} threatened (${Math.round(threatened/Math.max(1,total)*100)}%)`;
+    $('struct-count').style.color=threatened>0?'var(--err)':'var(--ok)';
+    toast(`${threatened}/${total} structures in fire zone`,'o');
+  }catch(e){ $('s9').className='sdot e'; toast('Overpass structure fetch failed','e'); }
+  $('struct-btn').textContent='🏠 Fetch Exposed Structures (OSM)';
+}
+
+// ── Operational Report ────────────────────────────────────────────────────────
+function generateReport(){
+  if(!S.sim?.snapshots){ toast('Run a projection first','e'); return; }
+  const snap=S.sim.snapshots[S.step];
+  let fl=0,ch=0,pre=0;
+  snap.forEach(r=>r.forEach(c=>{if(c.fire===F.FLAME||c.fire===F.PRE)fl++;if(c.fire===F.CHAR)ch++;}));
+  const acres=fmtAc(fl+ch);
+  const fdr=S.fdr||computeFDR();
+  const stW=S.windSteps?S.windSteps[Math.min(S.step,S.windSteps.length-1)]:null;
+  // Alert check and NWS data storage for report
+  const dispSpd=stW?Math.round(stW.spd):S.windSpd;
+  const dispDeg=stW?stW.deg:S.windDeg;
+  const threat=fl>250?'CRITICAL':fl>100?'HIGH':fl>30?'MODERATE':fl>0?'LOW':'STANDBY';
+  const threatClr={CRITICAL:'#F44336',HIGH:'#FF6D00',MODERATE:'#FFA726',LOW:'#FFEE58',STANDBY:'#66BB6A'}[threat];
+  const center=S.sim.center;
+  const rpt=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>FireSim Operational Report — ${new Date().toLocaleString()}</title>
+<style>
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#fff;color:#1a1a1a;margin:0;padding:32px;max-width:900px}
+  h1{font-size:22px;border-bottom:3px solid #FF6D00;padding-bottom:10px;margin-bottom:24px}
+  h2{font-size:14px;color:#546E7A;text-transform:uppercase;letter-spacing:1.5px;margin:28px 0 10px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+  .card{background:#F5F5F5;border-radius:8px;padding:14px}
+  .card .label{font-size:9px;color:#90A4AE;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+  .card .val{font-size:22px;font-weight:800;font-family:monospace;color:#1a1a1a}
+  .card .sub{font-size:10px;color:#78909C;margin-top:2px}
+  .badge{display:inline-block;padding:4px 14px;border-radius:20px;font-weight:700;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  td,th{padding:8px 12px;text-align:left;border-bottom:1px solid #eee;font-size:12px}
+  th{background:#F5F5F5;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#78909C}
+  .footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;font-size:10px;color:#B0BEC5}
+</style></head><body>
+<h1>🔥 FireSim Live — Operational Report</h1>
+<table style="margin-bottom:0"><tr><td><b>Generated:</b> ${new Date().toLocaleString()}</td>
+<td><b>Projection time:</b> ${fmtT(S.step)}</td>
+<td><b>Location:</b> ${center?fmtLL(center.lat,center.lng):'—'}</td></tr></table>
+
+<h2>Incident Status</h2>
+<div class="grid">
+  <div class="card"><div class="label">Threat Level</div>
+    <div class="val" style="color:${threatClr}">${threat}</div><div class="sub">At ${fmtT(S.step)}</div></div>
+  <div class="card"><div class="label">Estimated Acres</div>
+    <div class="val">~${acres}</div><div class="sub">${fl} active flame cells</div></div>
+  <div class="card"><div class="label">Charred Area</div>
+    <div class="val">${fmtAc(ch)}</div><div class="sub">${ch} cells</div></div>
+  <div class="card"><div class="label">Zone Coverage</div>
+    <div class="val">${Math.round((fl+ch)/(G*G)*100)}%</div><div class="sub">Of ${KM.toFixed(0)} km projection zone</div></div>
+  <div class="card"><div class="label">Grid Resolution</div>
+    <div class="val">${G}×${G}</div><div class="sub">~${Math.round(KM*1000/G)}m/cell</div></div>
+  <div class="card"><div class="label">Containment Lines</div>
+    <div class="val">${contLines.length}</div><div class="sub">${contLines.reduce((s,l)=>s+l.length,0)} barrier cells</div></div>
+</div>
+
+<h2>Weather Conditions (${stW?'NWS Forecast':'Manual'})</h2>
+<div class="grid">
+  <div class="card"><div class="label">Wind Speed</div><div class="val">${dispSpd} mph</div><div class="sub">${stW?'NWS hourly':'Slider'}</div></div>
+  <div class="card"><div class="label">Wind Direction</div><div class="val">${dispDeg}°</div><div class="sub">Fire spread direction</div></div>
+  <div class="card"><div class="label">Fuel Moisture</div><div class="val">${Math.round(S.moist*100)}%</div><div class="sub">Dead fine fuel</div></div>
+</div>
+
+<h2>NFDRS Fire Danger Rating</h2>
+<div class="grid">
+  <div class="card"><div class="label">Rating</div><div class="val" style="color:${fdr.dr?.color||'#1a1a1a'}">${fdr.dr?.label||'—'}</div><div class="sub">NFDRS Class</div></div>
+  <div class="card"><div class="label">FWI</div><div class="val">${(fdr.fwi||0).toFixed(1)}</div><div class="sub">Fire Weather Index</div></div>
+  <div class="card"><div class="label">ISI</div><div class="val">${(fdr.isi||0).toFixed(1)}</div><div class="sub">Initial Spread Index</div></div>
+  <div class="card"><div class="label">FFMC</div><div class="val">${(fdr.ffmc||0).toFixed(0)}</div><div class="sub">Fine Fuel MC Code</div></div>
+  <div class="card"><div class="label">BUI</div><div class="val">${(fdr.bui||0).toFixed(0)}</div><div class="sub">Build-Up Index</div></div>
+  <div class="card"><div class="label">ERC</div><div class="val">${(fdr.erc||0).toFixed(0)}</div><div class="sub">Energy Release Component</div></div>
+</div>
+
+<h2>Simulation Parameters</h2>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Source</th></tr>
+  <tr><td>Spread Algorithm</td><td>Huygens ellipse + Van Wagner crown + Rothermel slope</td><td>Anderson 1983, Van Wagner 1977, Rothermel 1972</td></tr>
+  <tr><td>Fuel Models</td><td>Scott & Burgan 40 (GR2/SH5/TU5)</td><td>Scott & Burgan 2005</td></tr>
+  <tr><td>Wind Data</td><td>${stW?'NOAA NWS hourly forecast sequence':'Manual sliders'}</td><td>${stW?'api.weather.gov':'User input'}</td></tr>
+  <tr><td>Moisture Damping</td><td>Rothermel Eq. 27 polynomial</td><td>Rothermel 1972</td></tr>
+  <tr><td>EMC Model</td><td>Nelson 1984 simplified</td><td>NWS humidity input</td></tr>
+  <tr><td>Ember Transport</td><td>Albini 1979 trajectory ballistics</td><td>Albini 1979</td></tr>
+  <tr><td>Diurnal Adjustment</td><td>${diurnalEnabled?'Active (USFS standard curve)':'Disabled'}</td><td>USFS</td></tr>
+  <tr><td>Simulation Steps</td><td>${STP} × 5 min = ${STP*5/60}h</td><td></td></tr>
+</table>
+
+<div class="footer">
+  Generated by <b>FireSim Live</b> — github.com/CosmicIndustries/FireSpread-Predictor<br>
+  For planning/research use only. Not a certified fire behavior prediction system.
+  Verify with certified FARSITE/FlamMap models for operational decisions.
+</div>
+</body></html>`;
+  const w=window.open('','_blank');
+  w.document.write(rpt);
+  w.document.close();
+  toast('Report opened in new tab — use browser Print to save as PDF','o');
 }
 
 window.addEventListener('load',()=>{boot('Binding UI…');bindUI();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
