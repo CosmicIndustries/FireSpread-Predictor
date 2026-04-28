@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>FireSim Live — Open Wildfire Expansion Projector</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="manifest" href="data:application/manifest+json,{
+  %22name%22:%22FireSim%20Live%22,
+  %22short_name%22:%22FireSim%22,
+  %22start_url%22:%22./%22,
+  %22display%22:%22standalone%22,
+  %22background_color%22:%22%23060F18%22,
+  %22theme_color%22:%22%23FF6D00%22,
+  %22icons%22:[{%22src%22:%22data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='52' font-size='52'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E%22,%22sizes%22:%22any%22,%22type%22:%22image/svg+xml%22}]
+}">
+<meta name="theme-color" content="#FF6D00">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FireSim Live">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#060F18;--s1:#09141F;--s2:#0D2535;--s3:#1E3050;--pri:#FF6D00;--pb:#FF8F00;--pd:#E65100;--fg:#E8EAED;--f2:#90A4AE;--f3:#546E7A;--f4:#37474F;--err:#EF5350;--wrn:#FFA726;--ok:#66BB6A;--inf:#42A5F5}
@@ -336,6 +349,15 @@ button{font-family:inherit;cursor:pointer}
     <div id="alert-status" style="font-size:11px;color:var(--f3);margin-top:8px">Alert will fire at 25% zone coverage.</div>
 
     <div class="sh">Operational Report</div>
+    <div class="sh">Suppression Resources</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="sbtn" id="supp-add" style="flex:1;font-size:10.5px;background:var(--s3)">+ Add Resource</button>
+      <button class="sbtn" id="supp-clear" style="flex:1;font-size:10.5px;background:var(--err)">Clear All</button>
+    </div>
+    <div id="supp-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;font-size:11px;color:var(--f3)">No resources placed. Click map after adding.</div>
+    <div class="sh">Evacuation Zones</div>
+    <button class="sbtn" id="evac-btn" style="width:100%;font-size:11px;margin-bottom:6px;background:var(--s3)" disabled>🚨 Generate Evacuation Zones</button>
+    <div id="evac-status" style="font-size:10.5px;color:var(--f3);margin-bottom:12px">Run projection first</div>
     <button class="ebtn" id="e-report" style="background:linear-gradient(135deg,rgba(255,109,0,.15),rgba(230,81,0,.08));border-color:rgba(255,109,0,.4);color:var(--pb)" disabled>📋 Generate FBAN Summary Report</button>
   </div>
 
@@ -365,6 +387,10 @@ button{font-family:inherit;cursor:pointer}
     <div class="trow" data-disp="zone"><span>📐 Zone outline</span><div class="tog on" id="tog-zone"><div class="kn"></div></div></div>
     <div class="trow" data-disp="smoke"><span>💨 Smoke</span><div class="tog on" id="tog-smoke"><div class="kn"></div></div></div>
     <div class="trow" data-disp="gchart"><span>📈 Growth chart</span><div class="tog on" id="tog-gchart"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="flamelen"><span>🔥 Flame length raster</span><div class="tog" id="tog-flamelen"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="smoke"><span>💨 Smoke plume</span><div class="tog on" id="tog-smoke2"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="hazard"><span>⚠ Terrain hazard flags</span><div class="tog on" id="tog-hazard"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="windrose"><span>🌬 Wind rose overlay</span><div class="tog on" id="tog-windrose"><div class="kn"></div></div></div>
   </div>
 
   <!-- DATA -->
@@ -450,6 +476,11 @@ button{font-family:inherit;cursor:pointer}
   <div style="height:4px;background:var(--s2);border-radius:2px;overflow:hidden;margin-bottom:5px"><div id="zbar"></div></div>
   <div style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace" id="zpct">0%</div>
   <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace;margin-top:3px" id="zac">~0 acres</div><div style="font-size:9px;color:var(--f4);font-family:'DM Mono',monospace;margin-top:2px" id="zres">80×80 · 50m/cell</div>
+</div>
+<div class="mcrd" id="windrose-panel" style="top:80px;right:14px;padding:10px;display:none;z-index:600">
+  <div style="font-size:8.5px;color:var(--f4);letter-spacing:1px;margin-bottom:6px;font-family:'DM Mono',monospace">WIND FORECAST (8H)</div>
+  <svg id="windrose-svg" width="120" height="120" viewBox="-60 -60 120 120"></svg>
+  <div style="font-size:8.5px;color:var(--f4);margin-top:5px;font-family:'DM Mono',monospace;text-align:center" id="windrose-time">—</div>
 </div>
 <div class="mcrd" id="behave-panel" style="top:14px;left:50%;transform:translateX(-50%);padding:12px 16px;display:none;min-width:300px;max-width:380px;z-index:600">
   <div style="font-size:9.5px;color:var(--inf);font-weight:700;letter-spacing:1px;margin-bottom:10px">🔬 BEHAVE POINT INSPECTOR</div>
@@ -778,8 +809,15 @@ function afterProject(){
   ['wind-ov','tbadge','zstats'].forEach(id=>$(id).style.display='flex');
   $('wind-ov').style.display='flex';$('zstats').style.display='block';
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
-  ['scen-save','e-report','risk-btn','struct-btn','e-kml'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
+  ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
+  // Compute terrain hazards
+  if(typeof computeTerrainHazards==='function'&&S.sim){
+    terrainHazards=computeTerrainHazards(S.sim.terrain,S.windDeg);
+    renderHazardFlags(terrainHazards,S.sim.bounds);
+  }
+  // Show wind rose if NWS data loaded
+  if(S.windSteps){ const wp=$('windrose-panel'); if(wp) wp.style.display='block'; drawWindRose(S.windSteps); }
   drawCompass(S.windDeg);updateUI();draw();
   toast(`Projection ready · ${KM}km zone`,'o');
 }
@@ -824,8 +862,14 @@ function draw(){
   if(S.showSmoke){ctx.save();ctx.globalCompositeOperation='lighter';for(let y=0;y<G;y++)for(let x=0;x<G;x++){if(snap[y][x].fire!==F.CHAR)continue;const d=Math.sin(S.ft*.07+x*.3+y*.2)*cW*.4,px=tl.x+x*cW+cW/2+d,py=tl.y+y*cH;const sg=ctx.createRadialGradient(px,py-cH,0,px,py,cW*2.2);sg.addColorStop(0,'rgba(80,80,90,.09)');sg.addColorStop(1,'rgba(50,50,60,0)');ctx.fillStyle=sg;ctx.fillRect(px-cW*2.2,py-cH*3,cW*4.4,cH*4);}ctx.restore();}
   if(S.showPerim)drawPerim(ctx,snap,tl,cW,cH);
   drawIgnMks(ctx,map);
-  // Model overlay (FlamMap / Cell2Fire / FARSITE arrival time)
+  // Model overlay
   if(typeof drawModelOverlay==='function') drawModelOverlay(ctx,tl,br,cW,cH);
+  // Flame length raster
+  if(typeof drawFlameLenRaster==='function') drawFlameLenRaster(ctx,tl,cW,cH);
+  // Smoke plume
+  if(typeof drawSmokePlume==='function') drawSmokePlume(ctx,tl,br,cW,cH);
+  // Probability isolines
+  if(typeof drawProbIsolines==='function') drawProbIsolines(ctx,tl,cW,cH);
 }
 
 function drawZone(ctx,tl,zW,zH){ctx.save();ctx.strokeStyle='rgba(255,142,0,.45)';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.strokeRect(tl.x,tl.y,zW,zH);ctx.setLineDash([]);ctx.strokeStyle='rgba(255,142,0,.75)';ctx.lineWidth=2;const tk=9;[[tl.x,tl.y,1,1],[tl.x+zW,tl.y,-1,1],[tl.x,tl.y+zH,1,-1],[tl.x+zW,tl.y+zH,-1,-1]].forEach(([x,y,dx,dy])=>{ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+tk*dx,y);ctx.moveTo(x,y);ctx.lineTo(x,y+tk*dy);ctx.stroke();});ctx.restore();}
@@ -915,6 +959,7 @@ function initMap(){
   S.map.on('moveend zoomend',()=>draw());
   setupLayers();boot('Connecting to NIFC…');
   S.map.on('zoomend',()=>{ const zl=$('z-lbl'); if(zl) zl.textContent=S.map.getZoom(); });
+  S.map.on('click', onSuppClick);
 }
 
 // ── UI bindings ────────────────────────
@@ -1568,8 +1613,15 @@ async function autoProject(lat,lng,name,acres){
   S.step=0;enableTL();updateURL();
   ['wind-ov','tbadge','zstats'].forEach(id=>{const e=$(id);if(e)e.style.display=id==='zstats'?'block':'flex';});
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
-  ['scen-save','e-report','risk-btn','struct-btn','e-kml'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
+  ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
+  // Compute terrain hazards
+  if(typeof computeTerrainHazards==='function'&&S.sim){
+    terrainHazards=computeTerrainHazards(S.sim.terrain,S.windDeg);
+    renderHazardFlags(terrainHazards,S.sim.bounds);
+  }
+  // Show wind rose if NWS data loaded
+  if(S.windSteps){ const wp=$('windrose-panel'); if(wp) wp.style.display='block'; drawWindRose(S.windSteps); }
   drawCompass(S.windDeg);updateUI();draw();
   chip('c-zone',`🔥 ${name} · ${statusParts.join(' · ')}`,'pri');
   toast(`Projection ready · ${statusParts.join(', ')}`,'o');
@@ -2695,6 +2747,424 @@ function rerunWithModel(){
   dispatchModel(terrain,bounds,S.sim.center,params);
   S.step=0; if(S.playing) stopPlay();
   buildGChart(); drawCompass(S.windDeg); updateUI(); draw();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  IMPROVEMENT PACK JS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Wind Rose Visualization ───────────────────────────────────────────────
+// Renders 8h NWS wind forecast as a directional rose on the map overlay
+function drawWindRose(windSteps){
+  const svg=$('windrose-svg'); if(!svg) return;
+  if(!windSteps||!windSteps.length){ svg.innerHTML=''; return; }
+  // Sample one per hour (every 12 steps)
+  const hours=[];
+  for(let h=0;h*12<windSteps.length&&h<8;h++) hours.push(windSteps[h*12]);
+  const R=52, cx=0, cy=0;
+  const maxSpd=Math.max(...hours.map(h=>h.spd),1);
+  let html='';
+  // Cardinal rings
+  [0.25,0.5,0.75,1.0].forEach(f=>{
+    html+=`<circle cx="0" cy="0" r="${R*f}" fill="none" stroke="#1E3050" stroke-width="${f===1?1.5:0.5}"/>`;
+  });
+  // Cardinal labels
+  [['N',-48],['E',48],['S',0],['W',0]].forEach(([d,dx],i)=>{
+    const angles=[[-48,0],[0,48],[48,0],[0,-48]];
+    const[ax,ay]=angles[i];
+    html+=`<text x="${ax}" y="${ay+3}" text-anchor="middle" font-size="7" fill="#546E7A" font-family="monospace">${d}</text>`;
+  });
+  // Forecast petals — spokes in spread direction color-coded by speed
+  hours.forEach((w,i)=>{
+    const frac=i/(hours.length-1);
+    const spreadRad=((w.deg+180)%360-90)*Math.PI/180;
+    const len=(w.spd/maxSpd)*R*0.9;
+    const ex=Math.cos(spreadRad)*len, ey=Math.sin(spreadRad)*len;
+    // Color: blue (slow) → orange → red (fast)
+    const t=w.spd/maxSpd;
+    const r=Math.round(144+t*111), g2=Math.round(202-t*152), b=Math.round(249-t*249);
+    const alpha=0.4+frac*0.6;
+    html+=`<line x1="0" y1="0" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="rgb(${r},${g2},${b})" stroke-width="${1.5+t*2}" stroke-linecap="round" opacity="${alpha}"/>`;
+    // Hour dot at tip
+    html+=`<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2" fill="rgb(${r},${g2},${b})" opacity="${alpha}"/>`;
+  });
+  // Current step indicator
+  const stW=S.windSteps?S.windSteps[Math.min(S.step,S.windSteps.length-1)]:null;
+  if(stW){
+    const rad=((stW.deg+180)%360-90)*Math.PI/180;
+    const len=(stW.spd/maxSpd)*R*0.9;
+    const ex=Math.cos(rad)*len*1.05, ey=Math.sin(rad)*len*1.05;
+    html+=`<line x1="0" y1="0" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#FF8F00" stroke-width="2.5" stroke-linecap="round"/>`;
+    html+=`<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="3.5" fill="#FF8F00" stroke="#060F18" stroke-width="1.5"/>`;
+    const td=$('windrose-time');
+    if(td) td.textContent=`Now: ${stW.spd}mph @ ${stW.deg}°`;
+  }
+  html+=`<circle cx="0" cy="0" r="3" fill="#E8EAED"/>`;
+  svg.innerHTML=html;
+}
+
+// ── Flame Length Raster Layer ─────────────────────────────────────────────
+// Pre-computed per-cell flame length at current timestep
+let showFlameLenRaster=false;
+
+function drawFlameLenRaster(ctx, tl, cW, cH){
+  if(!showFlameLenRaster||!S.sim?.snapshots) return;
+  const snap=S.sim.snapshots[S.step];
+  const stW=S.windSteps?S.windSteps[Math.min(S.step,S.windSteps.length-1)]:null;
+  const windSpd=stW?stW.spd:S.windSpd;
+  ctx.save();
+  ctx.globalAlpha=0.65;
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    const c=snap[y][x];
+    if(c.fire!==F.FLAME&&c.fire!==F.PRE) continue;
+    const r=rothermelFull(c.type,windSpd,Math.abs((c.elev-0.5)*80),c.moist);
+    const fl=r.flameLen;
+    if(fl<0.5) continue;
+    // Color ramp: yellow (1m) → orange (5m) → red (10m+)
+    const t=Math.min(1,fl/10);
+    const rc=Math.round(255), gc=Math.round(235*(1-t*0.8)), bc=0;
+    ctx.fillStyle=`rgba(${rc},${gc},${bc},0.8)`;
+    ctx.fillRect(tl.x+x*cW, tl.y+y*cH, cW+.5, cH+.5);
+    // Label on hover would be ideal but skip for perf
+  }
+  ctx.restore();
+}
+
+// ── Terrain Hazard Pre-Analysis ───────────────────────────────────────────
+// Detects: chimney (steep valley aligned with wind), saddle (wind acceleration),
+// aspect-wind alignment (fire runs upslope into wind)
+function computeTerrainHazards(terrain, windDeg){
+  const hazards=[];
+  const wRad=windDeg*Math.PI/180;
+  for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){
+    const c=terrain.grid[y][x];
+    if(c.type===T.WATER) continue;
+    // Gradient (slope vector)
+    const dz_dx=(terrain.elev[y][x+1]-terrain.elev[y][x-1])/2;
+    const dz_dy=(terrain.elev[y+1]?.[x]-terrain.elev[y-1]?.[x])/2||0;
+    const slopeMag=Math.sqrt(dz_dx*dz_dx+dz_dy*dz_dy);
+    const aspectRad=Math.atan2(-dz_dy,dz_dx); // aspect = uphill direction
+    // Wind-slope alignment: fire accelerates when wind pushes upslope
+    const windSlope=Math.cos(wRad-aspectRad);
+    // Chimney: steep slope, narrow valley, wind aligned
+    const isChimney=slopeMag>0.12&&windSlope>0.7&&c.elev<0.45;
+    // Saddle: local minimum in cross-wind direction with high elevation
+    const isSaddle=c.elev<0.35&&
+      terrain.elev[y][x+1]>c.elev+0.05&&
+      terrain.elev[y][x-1]>c.elev+0.05&&
+      Math.abs(Math.cos(wRad-aspectRad))>0.5;
+    // Aspect alignment: fire running directly upslope into wind
+    const isAspectRun=slopeMag>0.08&&windSlope>0.85&&c.type===T.FOREST;
+    if(isChimney) hazards.push({y,x,type:'chimney',label:'🔥 Chimney',color:'#F44336'});
+    else if(isSaddle) hazards.push({y,x,type:'saddle',label:'⚡ Saddle',color:'#FF9800'});
+    else if(isAspectRun) hazards.push({y,x,type:'aspect',label:'⬆ Upslope Run',color:'#FFC107'});
+  }
+  // Cluster nearby hazards (keep one per 5-cell radius)
+  const clustered=[];
+  hazards.forEach(h=>{
+    if(!clustered.some(c=>Math.abs(c.x-h.x)<5&&Math.abs(c.y-h.y)<5))
+      clustered.push(h);
+  });
+  return clustered.slice(0,20); // max 20 flags
+}
+
+let terrainHazards=[], showHazardFlags=true;
+let hazardMarkers=[];
+
+function renderHazardFlags(hazards, bounds){
+  hazardMarkers.forEach(m=>S.map.removeLayer(m));
+  hazardMarkers=[];
+  if(!showHazardFlags||!hazards.length) return;
+  const lats=bounds.north-bounds.south, lngs=bounds.east-bounds.west;
+  hazards.forEach(h=>{
+    const lat=bounds.north-(h.y+.5)/G*lats;
+    const lng=bounds.west+(h.x+.5)/G*lngs;
+    const icon=L.divIcon({
+      html:`<div style="background:${h.color};color:#fff;padding:2px 5px;border-radius:4px;font-size:9px;font-weight:700;white-space:nowrap;box-shadow:0 2px 4px rgba(0,0,0,.5)">${h.label}</div>`,
+      className:'',iconAnchor:[0,0]
+    });
+    const m=L.marker([lat,lng],{icon,zIndexOffset:800});
+    m.bindTooltip(`<b>${h.label}</b><br><small>${h.type==='chimney'?'Steep aligned valley — fire could accelerate rapidly':h.type==='saddle'?'Wind acceleration saddle — increased spotfire risk':'Upslope run zone — fire aligned with slope and wind'}</small>`);
+    hazardMarkers.push(m.addTo(S.map));
+  });
+}
+
+// ── Smoke Dispersion Plume (Gaussian) ─────────────────────────────────────
+// Simple Gaussian plume: C(x,y) ∝ exp(-y²/(2σy²)) where x is downwind distance
+// σy grows with distance (Pasquill stability class D: σy ≈ 0.12x^0.90)
+let showSmokePlume=true;
+
+function drawSmokePlume(ctx, tl, br, cW, cH){
+  if(!showSmokePlume||!S.sim?.snapshots) return;
+  const snap=S.sim.snapshots[S.step];
+  const stW=S.windSteps?S.windSteps[Math.min(S.step,S.windSteps.length-1)]:null;
+  const windSpd=stW?stW.spd:S.windSpd;
+  const windDeg=stW?stW.deg:S.windDeg;
+  if(windSpd<2) return; // no plume in calm conditions
+  // Find fire centroid
+  let sx=0,sy=0,n=0;
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    if(snap[y][x].fire===F.FLAME||snap[y][x].fire===F.CHAR){sx+=x;sy+=y;n++;}
+  }
+  if(!n) return;
+  const fcx=tl.x+(sx/n)*cW, fcy=tl.y+(sy/n)*cH;
+  // Wind vector (spread direction is windDeg+180)
+  const plumeRad=((windDeg+180)%360)*Math.PI/180; // plume goes downwind
+  ctx.save();
+  // Draw 4 distance rings downwind with opacity decay
+  const steps=6;
+  const cellPx=cW;
+  for(let i=steps;i>=1;i--){
+    const downDist=i*(cellPx*4);
+    const px=fcx+Math.sin(plumeRad)*downDist;
+    const py=fcy-Math.cos(plumeRad)*downDist;
+    // Gaussian spread width (Pasquill D class)
+    const sigmaY=0.12*Math.pow(i*4,0.90)*cellPx;
+    const alpha=(steps-i+1)/(steps*3);
+    const grd=ctx.createRadialGradient(px,py,0,px,py,sigmaY*2.5);
+    grd.addColorStop(0,`rgba(180,180,200,${alpha})`);
+    grd.addColorStop(0.5,`rgba(150,150,170,${alpha*0.6})`);
+    grd.addColorStop(1,'rgba(120,120,140,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();
+    // Elongate ellipse in wind direction
+    ctx.save();
+    ctx.translate(px,py);
+    ctx.rotate(plumeRad);
+    ctx.scale(1,2.2); // elongate downwind
+    ctx.arc(0,0,sigmaY,0,Math.PI*2);
+    ctx.restore();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── Probability Contour Isolines (Cell2Fire mode) ─────────────────────────
+// Marching-squares isoline extraction for 50%, 75%, 90% burn probability
+function extractIsoline(field, threshold){
+  // Simple: collect all cells where probability crosses threshold
+  // and trace boundary edges
+  const edges=[];
+  for(let y=0;y<G-1;y++) for(let x=0;x<G-1;x++){
+    const v=field[y][x][S.step];
+    const vr=field[y][x+1]?.[S.step]??0;
+    const vd=field[y+1]?.[x]?.[S.step]??0;
+    if((v>=threshold)!==(vr>=threshold)) edges.push({x:x+.5,y,horiz:false});
+    if((v>=threshold)!==(vd>=threshold)) edges.push({x,y:y+.5,horiz:true});
+  }
+  return edges;
+}
+
+function drawProbIsolines(ctx, tl, cW, cH){
+  const md=S.modelData;
+  if(md?.type!=='cell2fire'||!md?.burnProb) return;
+  // Use burnProb [y][x] (single value) not the per-step array
+  const levels=[
+    {t:0.90,color:'#F44336',dash:[4,2],width:2.5,label:'90%'},
+    {t:0.75,color:'#FF9800',dash:[6,3],width:2,  label:'75%'},
+    {t:0.50,color:'#FFC107',dash:[8,4],width:1.5, label:'50%'},
+  ];
+  ctx.save();
+  levels.forEach(lv=>{
+    ctx.strokeStyle=lv.color;
+    ctx.lineWidth=lv.width;
+    ctx.setLineDash(lv.dash);
+    ctx.beginPath();
+    // Find cells at threshold boundary
+    for(let y=0;y<G-1;y++) for(let x=0;x<G-1;x++){
+      const v=md.burnProb[y][x];
+      const vr=md.burnProb[y]?.[x+1]??0;
+      const vd=md.burnProb[y+1]?.[x]??0;
+      if((v>=lv.t)!==(vr>=lv.t)){
+        const px=tl.x+(x+1)*cW, py=tl.y+(y+.5)*cH;
+        ctx.moveTo(px,py-cH*.5); ctx.lineTo(px,py+cH*.5);
+      }
+      if((v>=lv.t)!==(vd>=lv.t)){
+        const px=tl.x+(x+.5)*cW, py=tl.y+(y+1)*cH;
+        ctx.moveTo(px-cW*.5,py); ctx.lineTo(px+cW*.5,py);
+      }
+    }
+    ctx.stroke();
+    // Label (find a point on the contour)
+    for(let y=0;y<G-1;y++) for(let x=0;x<G-1;x++){
+      if((md.burnProb[y][x]>=lv.t)!==(md.burnProb[y]?.[x+1]??0>=lv.t)){
+        const px=tl.x+(x+1)*cW, py=tl.y+y*cH;
+        ctx.setLineDash([]);
+        ctx.fillStyle=lv.color;
+        ctx.font='bold 9px DM Mono,monospace';
+        ctx.fillText(lv.label,px+3,py);
+        break;
+      }
+    }
+    ctx.setLineDash([]);
+  });
+  ctx.restore();
+}
+
+// ── Suppression Resource Tracking ─────────────────────────────────────────
+const SUPP_TYPES=[
+  {id:'engine',  label:'Engine',    icon:'🚒', color:'#F44336'},
+  {id:'dozer',   label:'Dozer',     icon:'🚜', color:'#FF9800'},
+  {id:'crew',    label:'Hand Crew', icon:'👷', color:'#FFC107'},
+  {id:'air',     label:'Air Tanker',icon:'✈',  color:'#42A5F5'},
+  {id:'heli',    label:'Helicopter',icon:'🚁', color:'#66BB6A'},
+];
+let suppResources=[], suppLayer=null, addingResource=null;
+
+function renderSuppList(){
+  const el=$('supp-list'); if(!el) return;
+  el.innerHTML=suppResources.length
+    ? suppResources.map((r,i)=>`
+        <div style="background:var(--s2);border-radius:7px;padding:6px 8px;display:flex;align-items:center;gap:8px">
+          <span>${r.icon}</span>
+          <div style="flex:1"><div style="font-weight:600">${r.label}</div>
+          <div style="font-size:9.5px;color:var(--f4);font-family:'DM Mono',monospace">${fmtLL(r.lat,r.lng)}</div></div>
+          <button onclick="removeSuppResource(${i})" style="background:none;border:none;color:var(--err);cursor:pointer;font-size:13px">✕</button>
+        </div>`).join('')
+    : 'No resources placed. Select type then click map.';
+}
+
+function removeSuppResource(i){
+  const r=suppResources[i];
+  if(r.marker) S.map.removeLayer(r.marker);
+  suppResources.splice(i,1);
+  renderSuppList();
+}
+
+function showResourcePicker(){
+  const types=SUPP_TYPES;
+  const div=document.createElement('div');
+  div.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surf,#09141F);border:1px solid var(--s2,#0D2535);border-radius:14px;padding:16px;z-index:2000;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;min-width:260px';
+  div.innerHTML=`<div style="grid-column:1/-1;font-size:11px;color:var(--f2);font-weight:700;margin-bottom:4px">Select resource type, then click map</div>`+
+    types.map(t=>`<button onclick="selectSuppType('${t.id}')" style="padding:10px 6px;background:var(--s2,#0D2535);border:1px solid var(--s3,#1E3050);border-radius:8px;color:${t.color};font-size:20px;cursor:pointer" title="${t.label}">${t.icon}<div style="font-size:9px;color:var(--f3)">${t.label}</div></button>`).join('')+
+    `<button onclick="this.parentNode.remove();addingResource=null" style="grid-column:1/-1;padding:7px;background:transparent;border:1px solid var(--s3);border-radius:8px;color:var(--f3);cursor:pointer;font-size:12px">Cancel</button>`;
+  document.body.appendChild(div);
+}
+
+function selectSuppType(typeId){
+  addingResource=SUPP_TYPES.find(t=>t.id===typeId);
+  document.querySelectorAll('div[style*="translate(-50%,-50%)"]').forEach(d=>d.remove());
+  if(addingResource) toast(`Click map to place ${addingResource.label}`,'i',4000);
+}
+
+function onSuppClick(e){
+  if(!addingResource) return;
+  if(!suppLayer){ suppLayer=L.layerGroup().addTo(S.map); }
+  const{lat,lng}=e.latlng;
+  const t=addingResource;
+  const icon=L.divIcon({
+    html:`<div style="background:${t.color};color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.5);border:2px solid #fff">${t.icon}</div>`,
+    className:'',iconAnchor:[14,14]
+  });
+  const marker=L.marker([lat,lng],{icon,draggable:true}).addTo(suppLayer);
+  marker.bindPopup(`<b>${t.icon} ${t.label}</b><br><small>${fmtLL(lat,lng)}</small>`);
+  suppResources.push({...t,lat,lng,marker});
+  addingResource=null;
+  renderSuppList();
+  toast(`${t.icon} ${t.label} placed`,'o');
+}
+
+// ── Evacuation Zone Generator ─────────────────────────────────────────────
+let evacLayer=null;
+async function generateEvacZones(){
+  if(!S.sim?.snapshots||!S.sim.bounds){ toast('Run projection first','e'); return; }
+  $('evac-btn').textContent='Computing…';
+  const{bounds,snapshots}=S.sim;
+  // Project 2 hours ahead for evacuation zone
+  const futureStep=Math.min(STP-1, S.step+24);
+  const futureSnap=snapshots[futureStep];
+  const lats=bounds.north-bounds.south, lngs=bounds.east-bounds.west;
+  // Build fire front GeoJSON for 2h projection
+  const fireCells=[];
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    if(futureSnap[y][x].fire!==F.NONE){
+      const lat=bounds.north-(y+.5)/G*lats, lng=bounds.west+(x+.5)/G*lngs;
+      fireCells.push([lng,lat]);
+    }
+  }
+  if(!fireCells.length){ toast('No fire projected','e'); $('evac-btn').textContent='🚨 Generate Evacuation Zones'; return; }
+  // Query OSM for roads and communities within fire zone
+  const query=`[out:json][timeout:25];(
+    way["highway"~"^(primary|secondary|trunk|motorway)$"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+    node["place"~"^(city|town|village)$"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+  );out body geom;`;
+  try{
+    const r=await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,{signal:AbortSignal.timeout(20000)});
+    const d=await r.json();
+    if(evacLayer) S.map.removeLayer(evacLayer);
+    evacLayer=L.layerGroup().addTo(S.map);
+    // Zone 1 (Evacuation Order): within 2km of projected fire front
+    // Zone 2 (Evacuation Warning): 2-5km buffer
+    // Zone 3 (Watch): 5-10km
+    const zones=[
+      {label:'Zone 1 — Evacuation ORDER',  r:2,  color:'#F44336', fill:.35},
+      {label:'Zone 2 — Evacuation WARNING',r:5,  color:'#FF9800', fill:.2},
+      {label:'Zone 3 — Evacuation WATCH',  r:10, color:'#FFC107', fill:.1},
+    ];
+    // Find fire centroid
+    const fcLat=fireCells.reduce((s,c)=>s+c[1],0)/fireCells.length;
+    const fcLng=fireCells.reduce((s,c)=>s+c[0],0)/fireCells.length;
+    zones.forEach(z=>{
+      const circle=L.circle([fcLat,fcLng],{
+        radius:z.r*1000,
+        color:z.color, weight:2, dashArray:'8,4',
+        fillColor:z.color, fillOpacity:z.fill,
+      });
+      circle.bindPopup(`<b>${z.label}</b><br><small>Based on T+${Math.round(futureStep*5/60)}h projection</small>`);
+      evacLayer.addLayer(circle);
+      // Label
+      const labelIcon=L.divIcon({html:`<div style="color:${z.color};font-size:10px;font-weight:700;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8)">${z.label}</div>`,className:''});
+      evacLayer.addLayer(L.marker([fcLat+z.r/111,fcLng],{icon:labelIcon,interactive:false}));
+    });
+    // Highlight communities in Zone 1+2
+    let threatened=0;
+    d.elements.filter(e=>e.tags?.place).forEach(el=>{
+      const lat=el.lat||el.center?.lat, lng=el.lon||el.center?.lon;
+      if(!lat) return;
+      const km=Math.hypot((lat-fcLat)*111,(lng-fcLng)*111*Math.cos(fcLat*Math.PI/180));
+      const inZone=km<5;
+      if(inZone) threatened++;
+      const m=L.circleMarker([lat,lng],{radius:6,color:km<2?'#F44336':km<5?'#FF9800':'#FFC107',fillColor:'white',fillOpacity:.9,weight:2});
+      m.bindPopup(`<b>${el.tags.name||'Community'}</b><br><small>${km.toFixed(1)}km from projected fire center<br>${km<2?'⚠ ZONE 1 — ORDER':km<5?'⚠ ZONE 2 — WARNING':'ZONE 3 — WATCH'}</small>`);
+      evacLayer.addLayer(m);
+    });
+    $('evac-status').textContent=`${threatened} communities in Zones 1-2 · Based on T+${Math.round(futureStep*5/60)}h`;
+    $('evac-status').style.color=threatened>0?'var(--err)':'var(--ok)';
+    S.map.fitBounds([[bounds.south,bounds.west],[bounds.north,bounds.east]]);
+    toast(`Evacuation zones generated · ${threatened} communities in Order/Warning zones`,'o');
+  }catch(e){ toast('Overpass API unavailable','e'); }
+  $('evac-btn').textContent='🚨 Generate Evacuation Zones';
+}
+
+// ── Service Worker Registration (PWA offline) ─────────────────────────────
+function registerSW(){
+  if(!('serviceWorker' in navigator)) return;
+  // Inline service worker as blob URL
+  const swCode=`
+const CACHE='firesim-v1';
+const STATIC=['./',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js',
+  'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500;600&display=swap',
+];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC).catch(()=>{}))));
+self.addEventListener('fetch',e=>{
+  if(e.request.url.includes('api.weather.gov')||e.request.url.includes('firms.')||
+     e.request.url.includes('arcgis.com')||e.request.url.includes('irwin.doi')) return;
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(nr=>{
+    if(nr.ok){const c=nr.clone();caches.open(CACHE).then(ca=>ca.put(e.request,c));}
+    return nr;
+  }).catch(()=>caches.match('./'))));
+});`;
+  const blob=new Blob([swCode],{type:'application/javascript'});
+  const url=URL.createObjectURL(blob);
+  navigator.serviceWorker.register(url,{scope:'./'}).then(()=>{
+    console.log('FireSim SW registered');
+  }).catch(()=>{});
 }
 
 
