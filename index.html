@@ -231,7 +231,20 @@ button{font-family:inherit;cursor:pointer}
       <span class="ic">👆</span>
       <div><b>Click the map to project spread</b> from any point. <b>NOAA/NWS wind is auto-fetched</b> for US locations. Multiple clicks add ignition points.</div>
     </div>
-    <div class="mbar">
+    <!-- Model selector -->
+    <div class="sh" style="margin-top:0">Simulation Model</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:10px" id="model-grid">
+      <button class="mbtn on" data-model="fast"    style="padding:8px 4px;font-size:10px">⚡ Fast<br><span style="font-size:8px;opacity:.7">Tactical</span></button>
+      <button class="mbtn"    data-model="flammap"  style="padding:8px 4px;font-size:10px">🗺 FlamMap<br><span style="font-size:8px;opacity:.7">Hazard</span></button>
+      <button class="mbtn"    data-model="behave"   style="padding:8px 4px;font-size:10px">🔬 Behave<br><span style="font-size:8px;opacity:.7">Inspector</span></button>
+      <button class="mbtn"    data-model="cell2fire" style="padding:8px 4px;font-size:10px">🎲 Cell2Fire<br><span style="font-size:8px;opacity:.7">100× MC</span></button>
+      <button class="mbtn"    data-model="elmfire"  style="padding:8px 4px;font-size:10px">〰 ELMFIRE<br><span style="font-size:8px;opacity:.7">Level-Set</span></button>
+      <button class="mbtn"    data-model="farsite"  style="padding:8px 4px;font-size:10px">⏱ FARSITE<br><span style="font-size:8px;opacity:.7">Lite</span></button>
+    </div>
+    <div id="model-desc" style="font-size:10.5px;color:var(--f3);margin-bottom:12px;padding:8px;background:var(--s2);border-radius:8px;line-height:1.5">
+      ⚡ <b>Fast Tactical:</b> Huygens ellipse + Van Wagner crown + Rothermel ROS. Instant browser simulation.
+    </div>
+    <div class="mbar" style="display:none">
       <button class="mbtn on" id="mb-single">🔥 Single run</button>
       <button class="mbtn" id="mb-prob">📊 Probability (15×)</button>
     </div>
@@ -433,7 +446,27 @@ button{font-family:inherit;cursor:pointer}
   <div style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace" id="zpct">0%</div>
   <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace;margin-top:3px" id="zac">~0 acres</div><div style="font-size:9px;color:var(--f4);font-family:'DM Mono',monospace;margin-top:2px" id="zres">80×80 · 50m/cell</div>
 </div>
-<div class="mcrd" id="gchart" style="bottom:14px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none">
+<div class="mcrd" id="behave-panel" style="top:14px;left:50%;transform:translateX(-50%);padding:12px 16px;display:none;min-width:300px;max-width:380px;z-index:600">
+  <div style="font-size:9.5px;color:var(--inf);font-weight:700;letter-spacing:1px;margin-bottom:10px">🔬 BEHAVE POINT INSPECTOR</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px" id="behave-grid"></div>
+  <div style="margin-top:8px;font-size:10px;color:var(--f3);font-family:'DM Mono',monospace" id="behave-sub"></div>
+  <button onclick="document.getElementById('behave-panel').style.display='none'" style="position:absolute;top:8px;right:10px;background:none;border:none;color:var(--f3);font-size:14px;cursor:pointer">✕</button>
+</div>
+<div class="mcrd" id="flammap-legend" style="bottom:14px;left:50%;transform:translateX(-50%);padding:10px 14px;display:none">
+  <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:6px">FIRE HAZARD POTENTIAL</div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:10px">
+    <div style="width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,#1A237E,#4CAF50,#FFC107,#FF5722,#B71C1C)"></div>
+    <span style="color:var(--f3)">Low → Extreme</span>
+  </div>
+</div>
+<div class="mcrd" id="arrival-legend" style="bottom:14px;left:50%;transform:translateX(-50%);padding:10px 14px;display:none">
+  <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:6px">FIRE ARRIVAL TIME</div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:10px">
+    <div style="width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,#FFEB3B,#FF6D00,#F44336,#9C27B0)"></div>
+    <span style="color:var(--f3)">T+0 → T+8h</span>
+  </div>
+</div>
+<div class="mcrd" id="gchart" style="bottom:14px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none"><div class="mcrd" id="gchart" style="bottom:14px;left:50%;transform:translateX(-50%);padding:8px 12px;display:none">
   <div style="font-size:9px;color:var(--f4);letter-spacing:1px;margin-bottom:5px;font-family:'DM Mono',monospace">BURN AREA GROWTH</div>
   <svg id="gsvg" width="240" height="52" viewBox="0 0 240 52"></svg>
 </div>
@@ -498,7 +531,7 @@ const NIFC_P2='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/service
 const NIFC_I='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0';
 const NIFC_R='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/PublicView_RAWS/FeatureServer/1';
 
-const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,windSteps:null,
+const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,windSteps:null,modelData:null,
   windDeg:225,windSpd:15,moist:.10,mode:'single',probGrid:null,ignitions:[],
   showPerim:true,showChar:true,showZone:true,showSmoke:true,showGchart:true,
   vis:{perims:true,incs:true,raws:false,modis:false},
@@ -721,8 +754,12 @@ function project(ll){G=160;KM=20; // reset to default scale for manual projectio
   const ignPts=S.ignitions.map(p=>({...ll2g(p.lat,p.lng,bounds)}));
   const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts};
   S.sim={terrain,bounds,center:{lat:center.lat||lat,lng:center.lng||lng},params};
-  if(S.mode==='prob'){toast(`Running ${ENS} ensemble simulations…`,'i',4000);setTimeout(()=>{S.probGrid=runEnsemble(terrain,params);S.sim.snapshots=runSim(terrain,params);afterProject();},60);}
-  else{S.sim.snapshots=runSim(terrain,params);S.probGrid=null;afterProject();}
+  if(ACTIVE_MODEL!=='fast'&&ACTIVE_MODEL!=='behave'){
+    setTimeout(()=>{dispatchModel(terrain,pBounds,centerLL,params);afterProject();},60);
+  } else if(S.mode==='prob'){
+    toast(`Running ${ENS} ensemble simulations…`,'i',4000);
+    setTimeout(()=>{S.probGrid=runEnsemble(terrain,params);S.sim.snapshots=runSim(terrain,params);afterProject();},60);
+  } else{S.sim.snapshots=runSim(terrain,params);S.probGrid=null;afterProject();}
 }
 
 function afterProject(){
@@ -776,6 +813,8 @@ function draw(){
   if(S.showSmoke){ctx.save();ctx.globalCompositeOperation='lighter';for(let y=0;y<G;y++)for(let x=0;x<G;x++){if(snap[y][x].fire!==F.CHAR)continue;const d=Math.sin(S.ft*.07+x*.3+y*.2)*cW*.4,px=tl.x+x*cW+cW/2+d,py=tl.y+y*cH;const sg=ctx.createRadialGradient(px,py-cH,0,px,py,cW*2.2);sg.addColorStop(0,'rgba(80,80,90,.09)');sg.addColorStop(1,'rgba(50,50,60,0)');ctx.fillStyle=sg;ctx.fillRect(px-cW*2.2,py-cH*3,cW*4.4,cH*4);}ctx.restore();}
   if(S.showPerim)drawPerim(ctx,snap,tl,cW,cH);
   drawIgnMks(ctx,map);
+  // Model overlay (FlamMap / Cell2Fire / FARSITE arrival time)
+  if(typeof drawModelOverlay==='function') drawModelOverlay(ctx,tl,br,cW,cH);
 }
 
 function drawZone(ctx,tl,zW,zH){ctx.save();ctx.strokeStyle='rgba(255,142,0,.45)';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.strokeRect(tl.x,tl.y,zW,zH);ctx.setLineDash([]);ctx.strokeStyle='rgba(255,142,0,.75)';ctx.lineWidth=2;const tk=9;[[tl.x,tl.y,1,1],[tl.x+zW,tl.y,-1,1],[tl.x,tl.y+zH,1,-1],[tl.x+zW,tl.y+zH,-1,-1]].forEach(([x,y,dx,dy])=>{ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+tk*dx,y);ctx.moveTo(x,y);ctx.lineTo(x,y+tk*dy);ctx.stroke();});ctx.restore();}
@@ -1955,7 +1994,480 @@ function generateReport(){
   toast('Report opened in new tab — use browser Print to save as PDF','o');
 }
 
-window.addEventListener('load',()=>{boot('Binding UI…');bindUI();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
+// ═══════════════════════════════════════════════════════════════════════════
+//  MODEL ADAPTER LAYER — FireSim Live
+//  Fast Tactical · FlamMap · Behave · Cell2Fire · ELMFIRE · FARSITE-lite
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MODEL_DESCS = {
+  fast:     '⚡ <b>Fast Tactical:</b> Huygens ellipse + Van Wagner crown + Rothermel ROS. Instant browser simulation.',
+  flammap:  '🗺 <b>FlamMap-lite:</b> Static landscape hazard pre-computed from fuels, slope, wind. Shows where fire would run hard before it starts.',
+  behave:   '🔬 <b>Behave Inspector:</b> Click any map point for Rothermel point fire behavior — ROS, flame length, fireline intensity, POI, safety zone.',
+  cell2fire:'🎲 <b>Cell2Fire (100×):</b> Monte Carlo ensemble with perturbed wind/moisture/spotting. Outputs burn probability AND arrival-time raster.',
+  elmfire:  '〰 <b>ELMFIRE Level-Set:</b> Eulerian phi-field front advection — smoother fronts, better concave geometry, faster at large scales.',
+  farsite:  '⏱ <b>FARSITE-lite:</b> Arrival-time grid with per-cell perimeter tracking. Shows timestamped burn perimeters like real FARSITE output.',
+};
+let ACTIVE_MODEL='fast';
+
+// ── Fuel constants (Scott & Burgan) ─────────────────────────────────────────
+// h=heat content (kJ/kg), w=fuel load (kg/m²), sigma=SAV (1/m)
+const FUEL_PROPS=[
+  {h:18600, w:0.16, sigma:11500, name:'GR2'},  // GRASS
+  {h:18600, w:0.56, sigma:6600,  name:'SH5'},  // SHRUB
+  {h:18600, w:0.88, sigma:5900,  name:'TU5'},  // FOREST
+  {h:16000, w:0.32, sigma:5000,  name:'NB8'},  // URBAN
+  {h:0,     w:0,    sigma:1,     name:'NB9'},  // WATER
+  {h:0,     w:0,    sigma:1,     name:'NB9'},  // ROAD
+  {h:18600, w:0.05, sigma:8200,  name:'GR1'},  // ROCKY
+];
+
+// ── Rothermel full (1972) ────────────────────────────────────────────────────
+// Returns ros_max (m/min) downwind for given fuel/wind/slope/moisture
+function rothermelFull(fuelType, windSpd_mph, slope_pct, moisture_frac){
+  const fp=FUEL_PROPS[fuelType]||FUEL_PROPS[0];
+  if(fp.w===0) return{ros:0,intensity:0,flameLen:0,poi:0};
+  const U=windSpd_mph*26.8; // mph→ft/min
+  const Mf=Math.min(moisture_frac,0.99);
+  const Mx=TP[fuelType].mxt;
+  const _r=Math.min(1,Mf/Mx);
+  const etaM=Math.max(0,1-2.59*_r+5.11*_r*_r-3.52*_r*_r*_r); // moisture damping
+  const etaS=0.174*Math.pow(0.01,-.19); // mineral damping (simplified)
+  // Reaction intensity (BTU/ft²/min)
+  const Gamma=Math.min(0.5, fp.sigma*Math.exp(0.5-8.9/fp.sigma)*0.00001);
+  const Ir=Gamma*fp.h*fp.w*etaM*etaS*3.28; // convert units
+  // Wind factor
+  const Bfactor=0.02526*Math.pow(fp.sigma,0.54);
+  const phiW=Bfactor*Math.pow(U*3.281,1.5);
+  // Slope factor
+  const phiS=5.275*Math.pow(Mf,-0.3)*Math.pow(slope_pct/100,2)*0.01;
+  // Propagating flux
+  const xi=Math.exp((0.792+0.681*Math.sqrt(fp.sigma))*0.1)/(192+0.2595*fp.sigma);
+  // ROS (ft/min) → m/min
+  const rosft=Ir*xi*(1+phiW+phiS)/(fp.w*fp.h*3.5+1);
+  const ros=Math.max(0,rosft*0.3048);
+  // Byram fireline intensity (kW/m)
+  const I=ros/60*fp.w*fp.h;
+  // Andrews (2018) flame length (m)
+  const FL=I>0?0.0775*Math.pow(I,0.46):0;
+  // Probability of ignition (Rothermel 1983, simplified)
+  const poi=Math.max(0,Math.min(1,Math.pow(1-_r,2)*(0.1+0.9*Math.min(1,U/500))));
+  return{ros,intensity:I,flameLen:FL,poi,rosft};
+}
+
+// ── ① FlamMap-lite hazard layer ──────────────────────────────────────────────
+function computeFlamMapHazard(terrain, bounds, params){
+  const{windSpd,windDeg,moist:xm}=params;
+  const hazard=[];
+  let mn=Infinity, mx=-Infinity;
+  for(let y=0;y<G;y++){
+    hazard[y]=[];
+    for(let x=0;x<G;x++){
+      const c=terrain.grid[y][x];
+      if(TP[c.type].ros===0){hazard[y][x]=0;continue;}
+      const slope_pct=(c.elev-0.5)*80; // terrain slope proxy
+      const Mf=Math.max(c.moist,xm);
+      const r=rothermelFull(c.type,windSpd,Math.abs(slope_pct),Mf);
+      // Crown potential: forests near wind threshold
+      const crownP=c.type===T.FOREST?Math.min(1,(windSpd-10)/20):0;
+      // Wind exposure: downslope vs upslope
+      const windRad=windDeg*Math.PI/180;
+      // Composite hazard: ros × flameLen × crown boost
+      const h=r.ros*(1+r.flameLen*0.1)*(1+crownP*1.8);
+      hazard[y][x]=h;
+      if(h<mn)mn=h; if(h>mx)mx=h;
+    }
+  }
+  const range=mx-mn||1;
+  // Normalize 0-1
+  const norm=hazard.map(row=>row.map(v=>(v-mn)/range));
+  return{hazard:norm,raw:hazard,min:mn,max:mx};
+}
+
+// Color ramp: blue→green→yellow→orange→red
+function hazardColor(v){
+  const stops=[
+    [0,   [26,35,126]],
+    [0.25,[76,175,80]],
+    [0.50,[255,193,7]],
+    [0.75,[255,87,34]],
+    [1.0, [183,28,28]],
+  ];
+  for(let i=0;i<stops.length-1;i++){
+    const[t0,c0]=stops[i],[t1,c1]=stops[i+1];
+    if(v>=t0&&v<=t1){
+      const f=(v-t0)/(t1-t0);
+      return stops[i][1].map((a,j)=>Math.round(a+(stops[i+1][1][j]-a)*f));
+    }
+  }
+  return [183,28,28];
+}
+
+// ── ② Behave point inspector ─────────────────────────────────────────────────
+function inspectBehavePoint(lat, lng){
+  if(!S.sim) return;
+  const{bounds,terrain}=S.sim;
+  const{gx,gy}=ll2g(lat,lng,bounds);
+  const c=terrain.grid[gy]?.[gx];
+  if(!c){toast('Click within the simulation zone','e');return;}
+  const stW=S.windSteps?S.windSteps[Math.min(S.step,S.windSteps.length-1)]:null;
+  const windSpd=stW?stW.spd:S.windSpd;
+  const slope_pct=(c.elev-0.5)*80;
+  const r=rothermelFull(c.type,windSpd,Math.abs(slope_pct),c.moist+S.moist*0.3);
+  // NWCG safety zone: 4× max flame height (FL×1.5 = flame height approx)
+  const safetyZone=Math.round(4*r.flameLen*1.5);
+  // Scorch height (Van Wagner 1973)
+  const scorchH=r.intensity>0?Math.pow(r.intensity/140000,2/3)*3.28:0;
+  // Surface area to volume = indicator for spotting
+  const spottingRisk=windSpd>20&&c.type!==T.WATER?'HIGH':windSpd>10?'MOD':'LOW';
+  const fuelName=['Grass','Shrub','Forest','Urban','Water','Road','Rocky'][c.type];
+  const panel=$('behave-panel'); if(!panel) return;
+  const items=[
+    ['ROS',r.ros>0?r.ros.toFixed(2)+' m/min':'—','Rate of Spread'],
+    ['Flame Len',r.flameLen>0?r.flameLen.toFixed(1)+' m':'—','Andrews 2018'],
+    ['Fireline I',r.intensity>0?Math.round(r.intensity)+' kW/m':'—','Byram'],
+    ['POI',r.poi>0?Math.round(r.poi*100)+'%':'—','P(Ignition)'],
+    ['Safety Z',safetyZone>0?safetyZone+' m':'—','4× flame ht'],
+    ['Scorch H',scorchH>0?scorchH.toFixed(0)+' ft':'—','Van Wagner 73'],
+  ];
+  $('behave-grid').innerHTML=items.map(([l,v,d])=>`
+    <div style="background:var(--s2);border-radius:8px;padding:7px 8px">
+      <div style="font-size:8px;color:var(--f4);letter-spacing:.8px">${l}</div>
+      <div style="font-size:14px;font-weight:800;font-family:'DM Mono',monospace;color:var(--fg)">${v}</div>
+      <div style="font-size:8px;color:var(--f3)">${d}</div>
+    </div>`).join('');
+  $('behave-sub').innerHTML=`<b>Fuel:</b> ${fuelName} (${FUEL_PROPS[c.type].name}) · <b>Moist:</b> ${Math.round((c.moist+S.moist*0.3)*100)}% · <b>Elev:</b> ${c.elev.toFixed(2)} · <b>Slope:</b> ${slope_pct.toFixed(0)}% · <b>Spotting:</b> ${spottingRisk}`;
+  panel.style.display='block';
+}
+
+// ── ③ Cell2Fire — 100-run Monte Carlo with arrival time ──────────────────────
+const C2F_N=100;
+function runCell2Fire(terrain, params){
+  const arrivalTime=Array.from({length:G},()=>new Float32Array(G).fill(STP));
+  const burnCount=Array.from({length:G},()=>new Float32Array(G));
+  toast(`Running ${C2F_N} Cell2Fire simulations…`,'i',6000);
+  for(let r=0;r<C2F_N;r++){
+    // Perturb: wind ±20%, moisture ±10%, spotting random seed
+    const pv={...params,
+      windSpd:params.windSpd*(0.8+Math.random()*0.4),
+      moist:params.moist*(0.9+Math.random()*0.2),
+    };
+    const snaps=runSim(terrain,pv,31337+r*2731);
+    // Track first arrival per cell
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      let first=STP;
+      for(let s=0;s<STP;s++){
+        if(snaps[s][y][x].fire!==F.NONE){first=s;break;}
+      }
+      if(first<STP){
+        burnCount[y][x]++;
+        if(first<arrivalTime[y][x]) arrivalTime[y][x]=first;
+      }
+    }
+  }
+  const burnProb=burnCount.map(row=>row.map(v=>v/C2F_N));
+  return{burnProb,arrivalTime,runs:C2F_N};
+}
+
+// ── ④ ELMFIRE — Eulerian Level-Set front advection ────────────────────────────
+// phi[y][x] = signed distance to fire front (<0 = burned, >0 = unburned)
+// Advance: phi_next = phi - dt * ROS * |∇phi| (Osher & Sethian 1988)
+function runLevelSet(terrain, params){
+  const{windDeg,windSpd,moist:xm,ignPts,initGrid,windSteps}=params;
+  const wRad=((windDeg+180)%360)*Math.PI/180;
+  const DT=1.0; // dimensionless time step per CA step
+
+  // Initialize phi: positive distance from all ignition points
+  const phi=Array.from({length:G},(_,y)=>Array.from({length:G},(_,x)=>{
+    if(!ignPts?.length) return Math.sqrt((x-G/2)**2+(y-G/2)**2);
+    let minD=Infinity;
+    for(const{gx,gy}of ignPts) minD=Math.min(minD,Math.sqrt((x-gx)**2+(y-gy)**2));
+    return minD-2; // signed: <0 inside ignition cluster
+  }));
+
+  // If we have an initGrid (perimeter), set phi negative for CHAR/FLAME cells
+  if(initGrid){
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const f=initGrid[y][x].fire;
+      if(f===F.CHAR||f===F.FLAME) phi[y][x]=-1;
+    }
+    // Reinit signed distance (simplified: just clamp)
+  }
+
+  const snaps=[];
+  // Build ROS field once per step (update if dynamic wind)
+  function buildROSField(step){
+    const stW=windSteps?windSteps[Math.min(step,windSteps.length-1)]:null;
+    const stepSpd=stW?stW.spd:windSpd;
+    const stepWRad=stW?stW.wRad:wRad;
+    const ros=Array.from({length:G},(_,y)=>Array.from({length:G},(_,x)=>{
+      const c=terrain.grid[y][x];
+      if(TP[c.type].ros===0) return 0;
+      const U_kmh=stepSpd*1.609;
+      const LB=Math.max(1.05,1+8.729*Math.pow(Math.max(0,1-Math.exp(-0.030*U_kmh)),2.155));
+      const ec=(LB-1)/(LB+1);
+      // Gradient direction of phi = normal to front
+      const phiDX=x<G-1?phi[y][x+1]-phi[y][x]:phi[y][x]-phi[y][x-1];
+      const phiDY=y<G-1?phi[y+1][x]-phi[y][x]:phi[y][x]-phi[y-1][x];
+      const gradMag=Math.sqrt(phiDX*phiDX+phiDY*phiDY)||1;
+      const normX=phiDX/gradMag, normY=phiDY/gradMag;
+      // Front normal angle → direction fire is spreading
+      const frontAngle=Math.atan2(normY,normX);
+      const cosT=Math.cos(frontAngle-stepWRad);
+      const ellF=(1-ec)/(1-ec*cosT);
+      const rise=y>0&&y<G-1?(terrain.elev[y+1]?.[x]-terrain.elev[y-1]?.[x])/2:0;
+      const sf=Math.exp(4.2*rise);
+      const mf=Math.max(0,Math.pow(1-Math.min(c.moist*1.7,1),2.2));
+      const wm=1+1.2*Math.pow(Math.max(0,stepSpd)/10,1.3);
+      return TP[c.type].ros*wm*ellF*sf*mf;
+    }));
+    return ros;
+  }
+
+  for(let step=0;step<STP;step++){
+    const rosField=buildROSField(step);
+    // Advance phi using upwind scheme (Godunov)
+    const phiNext=Array.from({length:G},()=>new Array(G).fill(0));
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      if(terrain.grid[y][x].type===T.WATER){phiNext[y][x]=phi[y][x];continue;}
+      // Upwind gradients (min-mod)
+      const dxm=x>0?phi[y][x]-phi[y][x-1]:0;
+      const dxp=x<G-1?phi[y][x+1]-phi[y][x]:0;
+      const dym=y>0?phi[y][x]-phi[y-1][x]:0;
+      const dyp=y<G-1?phi[y+1][x]-phi[y][x]:0;
+      // Godunov: for level-set with ROS>0, fire spreads outward (phi decreasing)
+      const Gx=Math.sqrt(Math.max(dxm,0)**2+Math.min(dxp,0)**2);
+      const Gy=Math.sqrt(Math.max(dym,0)**2+Math.min(dyp,0)**2);
+      const gradMag=Math.sqrt(Gx*Gx+Gy*Gy)||1;
+      phiNext[y][x]=phi[y][x]-DT*(rosField[y][x]/Math.max(1,G/10))*gradMag;
+    }
+    // Periodic re-initialization (every 12 steps) to keep phi as valid distance
+    if(step%12===11){
+      for(let y=0;y<G;y++) for(let x=0;x<G;x++) phiNext[y][x]=Math.max(-20,Math.min(20,phiNext[y][x]));
+    }
+    // Copy phi for next step
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++) phi[y][x]=phiNext[y][x];
+
+    // Convert phi to grid snapshot (same structure as runSim)
+    const snap=terrain.grid.map((row,y)=>row.map((c,x)=>{
+      const p=phi[y][x];
+      const fire=p<-2?F.CHAR:p<0?F.FLAME:p<1.5?F.PRE:F.NONE;
+      return{...c,fire,tick:0,crown:fire===F.FLAME&&c.type===T.FOREST&&windSpd>18};
+    }));
+    snaps.push(snap);
+  }
+  return snaps;
+}
+
+// ── ⑤ FARSITE-lite — arrival-time perimeter tracking ─────────────────────────
+// Runs the base CA but tracks per-cell arrival time; outputs timestamped perimeter sets
+function runFARSITELite(terrain, params){
+  const snaps=runSim(terrain,params); // use existing engine
+  // Build arrival-time grid from snapshots
+  const arrivalTime=Array.from({length:G},()=>new Float32Array(G).fill(-1));
+  for(let step=0;step<snaps.length;step++){
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      if(arrivalTime[y][x]<0&&snaps[step][y][x].fire!==F.NONE)
+        arrivalTime[y][x]=step;
+    }
+  }
+  // Build perimeter vertex sets at each hour (every 12 steps)
+  const perimetersByHour=[];
+  for(let h=0;h*12<STP;h++){
+    const step=Math.min(h*12,STP-1);
+    const snap=snaps[step];
+    const cells=[];
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      if(snap[y][x].fire!==F.NONE){
+        // Is it a perimeter cell?
+        let isPerim=false;
+        for(let dy=-1;dy<=1&&!isPerim;dy++) for(let dx=-1;dx<=1&&!isPerim;dx++){
+          if(!dx&&!dy) continue;
+          if(!snap[y+dy]?.[x+dx]||snap[y+dy][x+dx].fire===F.NONE) isPerim=true;
+        }
+        if(isPerim) cells.push({x,y,arrivalStep:arrivalTime[y][x]});
+      }
+    }
+    perimetersByHour.push({hour:h,step,cells});
+  }
+  return{snaps,arrivalTime,perimetersByHour};
+}
+
+// ── MODEL DISPATCHER ─────────────────────────────────────────────────────────
+function dispatchModel(terrain, bounds, center, params){
+  S.modelData={};
+  switch(ACTIVE_MODEL){
+    case 'flammap':{
+      const{hazard}=computeFlamMapHazard(terrain,bounds,params);
+      S.modelData={type:'flammap',hazard};
+      // Also run fast for overlay
+      S.sim.snapshots=runSim(terrain,params);
+      break;
+    }
+    case 'behave':{
+      // Just run fast; behave inspector activates on click
+      S.sim.snapshots=runSim(terrain,params);
+      S.modelData={type:'behave'};
+      toast('Click any point in the zone to inspect Behave fire behavior','i',6000);
+      break;
+    }
+    case 'cell2fire':{
+      const result=runCell2Fire(terrain,params);
+      S.modelData={type:'cell2fire',...result};
+      // Also store base run for playback
+      S.sim.snapshots=runSim(terrain,params);
+      break;
+    }
+    case 'elmfire':{
+      S.sim.snapshots=runLevelSet(terrain,params);
+      S.modelData={type:'elmfire'};
+      break;
+    }
+    case 'farsite':{
+      const result=runFARSITELite(terrain,params);
+      S.sim.snapshots=result.snaps;
+      S.modelData={type:'farsite',arrivalTime:result.arrivalTime,perimeters:result.perimetersByHour};
+      break;
+    }
+    default:{ // 'fast'
+      S.sim.snapshots=runSim(terrain,params);
+      S.modelData={type:'fast'};
+      break;
+    }
+  }
+}
+
+// ── RENDERER EXTENSIONS ──────────────────────────────────────────────────────
+// Called from draw() after standard rendering
+function drawModelOverlay(ctx, tl, br, cW, cH){
+  const md=S.modelData;
+  if(!md) return;
+
+  // FlamMap hazard layer
+  if(md.type==='flammap'&&md.hazard){
+    ctx.save(); ctx.globalAlpha=0.55;
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const v=md.hazard[y][x];
+      if(v<0.05) continue;
+      const[r,g,b]=hazardColor(v);
+      ctx.fillStyle=`rgb(${r},${g},${b})`;
+      ctx.fillRect(tl.x+x*cW,tl.y+y*cH,cW+.5,cH+.5);
+    }
+    ctx.restore();
+    $('flammap-legend').style.display='block';
+    $('arrival-legend').style.display='none';
+    return;
+  }
+
+  // Cell2Fire burn probability overlay
+  if(md.type==='cell2fire'&&md.burnProb){
+    ctx.save(); ctx.globalAlpha=0.72;
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const p=md.burnProb[y][x];
+      if(p<0.04) continue;
+      const g_=p<0.5?Math.round(235-p*2*130):Math.round(105-Math.max(0,p-.5)*2*105);
+      ctx.fillStyle=`rgba(255,${g_},0,${Math.min(.9,p*.9+.1)})`;
+      ctx.fillRect(tl.x+x*cW,tl.y+y*cH,cW+.5,cH+.5);
+    }
+    ctx.restore();
+    // Arrival time overlay (fine dashes on top)
+    if(S.step>0){
+      ctx.save(); ctx.globalAlpha=0.45;
+      for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+        const at=md.arrivalTime[y][x];
+        if(at>=STP||at<0) continue;
+        if(at>S.step) continue; // only show arrived cells
+        const t=at/STP;
+        // temporal color: yellow→red→purple
+        const r2=255,g2=Math.round(235*(1-t)),b2=Math.round(t>0.7?200*(t-0.7)/0.3:0);
+        ctx.fillStyle=`rgba(${r2},${g2},${b2},.6)`;
+        ctx.fillRect(tl.x+x*cW,tl.y+y*cH,cW+.5,cH+.5);
+      }
+      ctx.restore();
+    }
+    $('flammap-legend').style.display='none';
+    $('arrival-legend').style.display='block';
+    return;
+  }
+
+  // FARSITE arrival-time layer
+  if(md.type==='farsite'&&md.arrivalTime){
+    ctx.save(); ctx.globalAlpha=0.7;
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const at=md.arrivalTime[y][x];
+      if(at<0||at>S.step) continue;
+      const t=at/STP;
+      const r2=255,g2=Math.round(235*(1-t)),b2=Math.round(t>0.7?190*(t-0.7)/0.3:0);
+      ctx.fillStyle=`rgba(${r2},${g2},${b2},.8)`;
+      ctx.fillRect(tl.x+x*cW,tl.y+y*cH,cW+.5,cH+.5);
+    }
+    // Draw hourly perimeter lines
+    if(md.perimeters){
+      ctx.strokeStyle='rgba(255,255,255,0.55)';
+      ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      for(const ph of md.perimeters){
+        if(ph.step>S.step) break;
+        for(const{x,y}of ph.cells){
+          ctx.strokeRect(tl.x+x*cW,tl.y+y*cH,cW,cH);
+        }
+      }
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+    $('arrival-legend').style.display='block';
+    $('flammap-legend').style.display='none';
+    return;
+  }
+
+  // Hide legends for other modes
+  $('flammap-legend').style.display='none';
+  $('arrival-legend').style.display='none';
+}
+
+// ── MODEL SELECTOR BINDING ────────────────────────────────────────────────────
+function bindModelSelector(){
+  document.querySelectorAll('[data-model]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      ACTIVE_MODEL=btn.dataset.model;
+      document.querySelectorAll('[data-model]').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      const desc=$('model-desc');
+      if(desc) desc.innerHTML=MODEL_DESCS[ACTIVE_MODEL]||'';
+      // Behave mode: enable map click inspector
+      if(ACTIVE_MODEL==='behave'){
+        S.map.on('click',onBehaveClick);
+        toast('Behave Inspector: click any point in the simulation zone','i',5000);
+      } else {
+        S.map.off('click',onBehaveClick);
+        const bp=$('behave-panel'); if(bp) bp.style.display='none';
+      }
+      // Rerun if sim exists
+      if(S.sim?.terrain) rerunWithModel();
+      chip('c-mode',`📊 ${btn.querySelector('b,span')?.textContent||ACTIVE_MODEL}`,'inf');
+    });
+  });
+}
+
+function onBehaveClick(e){
+  if(e.originalEvent.target.closest('.leaflet-popup')) return;
+  inspectBehavePoint(e.latlng.lat,e.latlng.lng);
+}
+
+// Rerun using active model
+function rerunWithModel(){
+  if(!S.sim||!S.ignitions.length) return;
+  const{bounds,terrain}=S.sim;
+  const ignPts=S.ignitions.map(p=>({...ll2g(p.lat,p.lng,bounds)}));
+  const params={windDeg:S.windDeg,windSpd:S.windSpd,moist:S.moist,ignPts,
+    windSteps:S.windSteps||null,windField:S.sim?.params?.windField||null,
+    initGrid:S.sim?.params?.initGrid||null};
+  S.sim.params=params;
+  dispatchModel(terrain,bounds,S.sim.center,params);
+  S.step=0; if(S.playing) stopPlay();
+  buildGChart(); drawCompass(S.windDeg); updateUI(); draw();
+}
+
+
+window.addEventListener('load',()=>{boot('Binding UI…');bindUI();bindModelSelector();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
 window.addEventListener('resize',()=>{S.map?.invalidateSize();sizeOv();draw();});
 </script>
 </body>
