@@ -499,6 +499,12 @@ button{font-family:inherit;cursor:pointer}
     <button class="spdb" data-ms="24">5×</button>
     <button class="spdb" data-ms="10">10×</button>
   </div>
+  <div class="spd" style="border-left:1px solid var(--s2);padding-left:10px;gap:4px">
+    <span>ZOOM</span>
+    <button class="cb" id="z-out" style="width:28px;height:28px;font-size:16px" title="Zoom out">−</button>
+    <div style="font-size:10px;color:var(--f2);font-family:'DM Mono',monospace;min-width:24px;text-align:center" id="z-lbl">5</div>
+    <button class="cb" id="z-in"  style="width:28px;height:28px;font-size:16px" title="Zoom in">+</button>
+  </div>
 </footer>
 <div id="toasts"></div>
 
@@ -534,7 +540,7 @@ const NIFC_R='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services
 const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,windSteps:null,modelData:null,
   windDeg:225,windSpd:15,moist:.10,mode:'single',probGrid:null,ignitions:[],
   showPerim:true,showChar:true,showZone:true,showSmoke:true,showGchart:true,
-  vis:{perims:true,incs:true,raws:false,modis:false},
+  vis:{perims:true,incs:true,raws:false,modis:false,viirs_snpp:false,viirs_noaa20:false,adsb:false},
   liveLayers:{},basemaps:{},curBm:'dark',map:null};
 
 const $=id=>document.getElementById(id);
@@ -903,6 +909,7 @@ function initMap(){
   S.map.on('move zoom resize',()=>{sizeOv();draw();});
   S.map.on('moveend zoomend',()=>draw());
   setupLayers();boot('Connecting to NIFC…');
+  S.map.on('zoomend',()=>{ const zl=$('z-lbl'); if(zl) zl.textContent=S.map.getZoom(); });
 }
 
 // ── UI bindings ────────────────────────
@@ -921,14 +928,29 @@ function bindUI(){
   $('b-ff').addEventListener('click',()=>{if(!S.sim)return;stopPlay();S.step=STP-1;updateUI();draw();});
   $('b-pl').addEventListener('click',togglePlay);
   document.querySelectorAll('.spdb').forEach(b=>{b.addEventListener('click',()=>{document.querySelectorAll('.spdb').forEach(x=>x.classList.remove('on'));b.classList.add('on');S.playMs=+b.dataset.ms;if(S.playing){stopPlay();togglePlay();}});});
-  document.querySelectorAll('[data-lay]').forEach(row=>{row.addEventListener('click',()=>{const k=row.dataset.lay,tog=$(`tog-${k}`);tog.classList.toggle('on');const on=tog.classList.contains('on');S.vis[k]=on;const lay=S.liveLayers[k];if(lay){if(on)lay.addTo(S.map);else S.map.removeLayer(lay);}});});
+  document.querySelectorAll('[data-lay]').forEach(row=>{if(row.dataset.fetch)return;row.addEventListener('click',()=>{const k=row.dataset.lay,tog=$(`tog-${k}`);if(!tog)return;tog.classList.toggle('on');const on=tog.classList.contains('on');S.vis[k]=on;const lay=S.liveLayers[k];if(lay){try{if(on)lay.addTo(S.map);else S.map.removeLayer(lay);}catch(e){}}});});
   document.querySelectorAll('[data-disp]').forEach(row=>{row.addEventListener('click',()=>{const k=row.dataset.disp,tog=$(`tog-${k}`);tog.classList.toggle('on');const on=tog.classList.contains('on');if(k==='perim')S.showPerim=on;if(k==='char')S.showChar=on;if(k==='zone')S.showZone=on;if(k==='smoke')S.showSmoke=on;if(k==='gchart'){S.showGchart=on;$('gchart').style.display=on&&S.sim?'block':'none';}draw();});});
   document.querySelectorAll('[data-bm]').forEach(b=>{b.addEventListener('click',()=>{const k=b.dataset.bm;if(k===S.curBm)return;S.map.removeLayer(S.basemaps[S.curBm]);S.basemaps[k].addTo(S.map);S.curBm=k;document.querySelectorAll('[data-bm]').forEach(x=>x.classList.remove('on'));b.classList.add('on');});});
-  $('sbtn').addEventListener('click',()=>searchFire($('sinp').value));
-  $('sinp').addEventListener('keydown',e=>{if(e.key==='Enter')searchFire(e.target.value);});
+  const sinpEl=$('sinp'),sbtnEl=$('sbtn');
+  if(sinpEl&&sbtnEl){
+    sbtnEl.addEventListener('click',()=>{ const v=sinpEl.value?.trim(); if(v) searchFire(v); });
+    sinpEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){ const v=sinpEl.value?.trim(); if(v) searchFire(v); }});
+  }
   $('e-gj').addEventListener('click',exportGJ);$('e-csv').addEventListener('click',exportCSV);
   $('e-share').addEventListener('click',()=>{navigator.clipboard?.writeText(location.href).then(()=>toast('Link copied!','o')).catch(()=>toast(location.href,'i',8000));});
   setInterval(()=>{S.ft++;if(S.sim&&!S.playing)draw();},140);
+  // Zoom controls
+  $('z-in')?.addEventListener('click',()=>{
+    if(!S.map) return;
+    S.map.zoomIn();
+    $('z-lbl').textContent=S.map.getZoom();
+  });
+  $('z-out')?.addEventListener('click',()=>{
+    if(!S.map) return;
+    S.map.zoomOut();
+    $('z-lbl').textContent=S.map.getZoom();
+  });
+  S.map?.on?.('zoomend',()=>{ const zl=$('z-lbl'); if(zl) zl.textContent=S.map.getZoom(); });
 
   // ── New button bindings ──────────────────────────────────────────────────
   // ── Ops tab bindings ───────────────────────────────────────────────────────
@@ -1494,6 +1516,7 @@ function clearDraw(){
 }
 
 function onDrawCreated(e){
+  if(contDrawing) return; // containment draw handled separately
   const layer=e.layer; drawItems.addLayer(layer);
   const isPoly=layer instanceof L.Polygon;
   // Determine/create bounds and terrain
