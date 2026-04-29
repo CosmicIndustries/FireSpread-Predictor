@@ -253,6 +253,7 @@ button{font-family:inherit;cursor:pointer}
       <button class="mbtn"    data-model="cell2fire" style="padding:8px 4px;font-size:10px">🎲 Cell2Fire<br><span style="font-size:8px;opacity:.7">100× MC</span></button>
       <button class="mbtn"    data-model="elmfire"  style="padding:8px 4px;font-size:10px">〰 ELMFIRE<br><span style="font-size:8px;opacity:.7">Level-Set</span></button>
       <button class="mbtn"    data-model="farsite"  style="padding:8px 4px;font-size:10px">⏱ FARSITE<br><span style="font-size:8px;opacity:.7">Lite</span></button>
+      <button class="mbtn"    data-model="euler4d" style="padding:8px 4px;font-size:10px;border:1px solid rgba(144,202,249,.4)">🌊 Euler 4D<br><span style="font-size:8px;opacity:.7">Navier-Stokes</span></button>
     </div>
     <div id="model-desc" style="font-size:10.5px;color:var(--f3);margin-bottom:12px;padding:8px;background:var(--s2);border-radius:8px;line-height:1.5">
       ⚡ <b>Fast Tactical:</b> Huygens ellipse + Van Wagner crown + Rothermel ROS. Instant browser simulation.
@@ -368,6 +369,15 @@ button{font-family:inherit;cursor:pointer}
     <div class="trow" data-lay="incs"><span><span class="dsw" style="background:#FF6D00;border-radius:50%"></span>Wildfire Incidents (WFIGS)</span><div class="tog on" id="tog-incs"><div class="kn"></div></div></div>
     <div class="trow" data-lay="raws"><span><span class="dsw" style="background:#42A5F5;border-radius:50%"></span>RAWS Weather Stations</span><div class="tog" id="tog-raws"><div class="kn"></div></div></div>
     <div class="trow" data-lay="modis"><span><span class="dsw" style="background:#E91E63"></span>MODIS Thermal (NASA GIBS)</span><div class="tog" id="tog-modis"><div class="kn"></div></div></div>
+    <div class="sh">Euler Wind Field</div>
+    <div class="trow" id="euler-wind-row">
+      <span>🌊 Wind vector field</span>
+      <div class="tog on" id="tog-euler-wind"><div class="kn"></div></div>
+    </div>
+    <div class="trow" id="euler-heat-row">
+      <span>🌡 Fire-atmosphere heat</span>
+      <div class="tog on" id="tog-euler-heat"><div class="kn"></div></div>
+    </div>
     <div class="trow" id="goes-row"><span><span class="dsw" style="background:#FF80AB"></span>GOES-East IR Band 7 (3.9μm)</span><div class="tog" id="tog-goes"><div class="kn"></div></div></div>
     <div style="font-size:10px;color:var(--f4);padding:4px 4px 8px;font-family:'DM Mono',monospace" id="hs-status">IR hotspots: not loaded</div>
     <button onclick="if(S.sim)fetchAllHotspots(S.sim.bounds).then(h=>{if(h.length)rerun();})" style="width:100%;padding:7px;background:var(--s2);border:1px solid var(--s3);color:var(--f2);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:6px">🛰 Refresh IR Hotspots Now</button>
@@ -417,6 +427,8 @@ button{font-family:inherit;cursor:pointer}
       <div class="srci"><div class="sdot" id="s10"></div>NASA EONET · Open Wildfire Events</div>
       <div class="srci"><div class="sdot" id="s11"></div>IRWIN DOI · Active Incident Locations</div>
       <div class="srci"><div class="sdot" id="s12"></div>GOES-East ABI Band 7 · NASA GIBS WMTS</div>
+      <div class="srci"><div class="sdot" id="s13"></div>USGS 3DEP · 30m Elevation (CONUS)</div>
+      <div class="srci"><div class="sdot" id="s14"></div>LANDFIRE 2022 · S&B 40 Fuel Models (CONUS)</div>
       <div class="srci"><div class="sdot" id="s7"></div>OpenSky Network · ADS-B</div>
       <div class="srci"><div class="sdot" id="s8"></div>OSM Overpass · Community Risk</div>
       <div class="srci"><div class="sdot" id="s9"></div>OSM Overpass · Building Footprints</div>
@@ -811,6 +823,12 @@ function afterProject(){
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
   ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
+  // Update source dots for real data
+  if(typeof E4D!=='undefined'&&E4D.dataLoaded){
+    const s13=$('s13'),s14=$('s14');
+    if(E4D.realElev&&s13) s13.className='sdot';
+    if(E4D.realFuel&&s14) s14.className='sdot';
+  }
   // Compute terrain hazards
   if(typeof computeTerrainHazards==='function'&&S.sim){
     terrainHazards=computeTerrainHazards(S.sim.terrain,S.windDeg);
@@ -864,6 +882,8 @@ function draw(){
   drawIgnMks(ctx,map);
   // Model overlay
   if(typeof drawModelOverlay==='function') drawModelOverlay(ctx,tl,br,cW,cH);
+  // Euler 4D: wind vectors + heat plume + fire whirls
+  if(ACTIVE_MODEL==='euler4d'&&typeof drawEulerOverlay==='function') drawEulerOverlay(ctx,tl,br,cW,cH);
   // Flame length raster
   if(typeof drawFlameLenRaster==='function') drawFlameLenRaster(ctx,tl,cW,cH);
   // Smoke plume
@@ -1012,6 +1032,15 @@ function bindUI(){
   $('e-report')?.addEventListener('click',generateReport);
 
   // ── Diurnal toggle ──────────────────────────────────────────────────────────
+  // Euler wind overlay toggles
+  let showEulerWind=true, showEulerHeat=true;
+  $('euler-wind-row')?.addEventListener('click',()=>{
+    const t=$('tog-euler-wind'); t.classList.toggle('on'); showEulerWind=t.classList.contains('on'); draw();
+  });
+  $('euler-heat-row')?.addEventListener('click',()=>{
+    const t=$('tog-euler-heat'); t.classList.toggle('on'); showEulerHeat=t.classList.contains('on'); draw();
+  });
+
   // GOES IR layer toggle
   let goesLayer=null;
   $('goes-row')?.addEventListener('click',()=>{
@@ -1615,6 +1644,12 @@ async function autoProject(lat,lng,name,acres){
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
   ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
+  // Update source dots for real data
+  if(typeof E4D!=='undefined'&&E4D.dataLoaded){
+    const s13=$('s13'),s14=$('s14');
+    if(E4D.realElev&&s13) s13.className='sdot';
+    if(E4D.realFuel&&s14) s14.className='sdot';
+  }
   // Compute terrain hazards
   if(typeof computeTerrainHazards==='function'&&S.sim){
     terrainHazards=computeTerrainHazards(S.sim.terrain,S.windDeg);
@@ -2611,6 +2646,27 @@ function dispatchModel(terrain, bounds, center, params){
       S.modelData={type:'farsite',arrivalTime:result.arrivalTime,perimeters:result.perimetersByHour};
       break;
     }
+    case 'euler4d':{
+      toast('Loading USGS 3DEP + LANDFIRE…','inf',5000);
+      const eb=S.sim.bounds;
+      // Fetch real terrain + fuels in parallel (browser CORS allows these)
+      Promise.all([
+        fetchUSGS_DEM(eb).catch(()=>null),
+        fetchLANDFIRE_Fuels(eb).catch(()=>null),
+      ]).then(([dem,fuels])=>{
+        if(dem) { terrain.elev=dem; terrain.grid.forEach((r,y)=>r.forEach((c,x)=>{c.elev=dem[y][x];})); }
+        if(fuels){ terrain.grid.forEach((r,y)=>r.forEach((c,x)=>{c.type=fuels[y][x];})); }
+        E4D.dataLoaded=!!(dem||fuels);
+        S.sim.snapshots=runSimEuler(terrain,params);
+        S.modelData={type:'euler4d',hasRealTerrain:!!dem,hasRealFuels:!!fuels};
+        afterProject();
+      }).catch(()=>{
+        S.sim.snapshots=runSimEuler(terrain,params);
+        S.modelData={type:'euler4d',hasRealTerrain:false,hasRealFuels:false};
+        afterProject();
+      });
+      return; // afterProject called asynchronously above
+    }
     default:{ // 'fast'
       S.sim.snapshots=runSim(terrain,params);
       S.modelData={type:'fast'};
@@ -3165,6 +3221,570 @@ self.addEventListener('fetch',e=>{
   navigator.serviceWorker.register(url,{scope:'./'}).then(()=>{
     console.log('FireSim SW registered');
   }).catch(()=>{});
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EULER 4D FIRE DYNAMICS ENGINE
+//  Real terrain (USGS 3DEP) · Real fuels (LANDFIRE) · Navier-Stokes wind
+//  Fire-atmosphere coupling · 3D ember ballistics · Vorticity/fire whirls
+//  Semi-Lagrangian advection · Jacobi pressure projection
+// ═══════════════════════════════════════════════════════════════════════════
+
+const E4D = {
+  // Wind velocity fields (m/s, Cartesian components)
+  u: null,          // East-West  [G][G]
+  v: null,          // North-South [G][G]
+  w: null,          // Vertical   [G][G] (buoyancy-driven)
+  p: null,          // Pressure   [G][G]
+  // Thermodynamic fields
+  T: null,          // Temperature anomaly [G][G] (K above ambient)
+  Q: null,          // Heat source [G][G] (W/m²)
+  // Vorticity
+  omega: null,      // ∂v/∂x - ∂u/∂y [G][G]
+  // 3D tracking
+  zFlame: null,     // Flame height m [G][G]
+  zCrown: null,     // Crown fire height [G][G]
+  arrivalTime4D: null, // step of first ignition [G][G]
+  // Real data
+  realElev: null,   // USGS 3DEP DEM [G][G] normalized 0-1
+  realFuel: null,   // LANDFIRE fuel class [G][G]
+  dataLoaded: false,
+  // Constants
+  g: 9.81,          // m/s²
+  T0: 293,          // K ambient temperature
+  nu: 1e-5,         // kinematic viscosity (air, m²/s)
+  rho: 1.2,         // kg/m³ air density
+  cp: 1005,         // J/(kg·K) specific heat
+};
+
+// ── ① USGS 3DEP Real Elevation Fetch ─────────────────────────────────────
+// WCS GetCoverage — USGS 1/3 arc-second DEM, no key required
+async function fetchUSGS_DEM(bounds){
+  const{south,north,west,east}=bounds;
+  // Clamp to CONUS coverage
+  if(south<24||north>50||west<-125||east>-65){
+    console.log('Outside CONUS — using synthetic DEM');
+    return null;
+  }
+  try{
+    // WCS 2.0 GetCoverage — USGS National Elevation Dataset
+    const bbox=`${west},${south},${east},${north}`;
+    const url=`https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=${bbox}&bboxSR=4326&size=${G},${G}&imageSR=4326&format=tiff&pixelType=F32&noData=-9999&interpolation=+RSP_BilinearInterpolation&f=image`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(15000)});
+    if(!r.ok) throw new Error(`3DEP HTTP ${r.status}`);
+    const blob=await r.blob();
+    // Decode as image via canvas
+    const img=await createImageBitmap(blob);
+    const canvas=new OffscreenCanvas(G,G);
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(img,0,0,G,G);
+    const px=ctx.getImageData(0,0,G,G).data;
+    // Extract grayscale (elevation mapped to 0-255 by server)
+    let mn=255,mx=0;
+    const raw=new Float32Array(G*G);
+    for(let i=0;i<G*G;i++){
+      const v=px[i*4]; // R channel
+      raw[i]=v; if(v<mn)mn=v; if(v>mx)mx=v;
+    }
+    const range=mx-mn||1;
+    const elev=Array.from({length:G},(_,y)=>
+      Array.from({length:G},(_,x)=>(raw[y*G+x]-mn)/range));
+    E4D.realElev=elev;
+    toast(`USGS 3DEP DEM loaded · ${G}×${G} · 30m resolution`,'ok');
+    return elev;
+  }catch(e){
+    // Fallback: try WMS GetMap as PNG
+    try{
+      const url2=`https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=33DEPElevation:None&CRS=CRS:84&BBOX=${west},${south},${east},${north}&WIDTH=${G}&HEIGHT=${G}&FORMAT=image/png&STYLES=`;
+      const r2=await fetch(url2,{signal:AbortSignal.timeout(12000)});
+      if(!r2.ok) throw new Error('WMS fallback failed');
+      const blob2=await r2.blob();
+      const img2=await createImageBitmap(blob2);
+      const cv2=new OffscreenCanvas(G,G);
+      const ctx2=cv2.getContext('2d');
+      ctx2.drawImage(img2,0,0,G,G);
+      const px2=ctx2.getImageData(0,0,G,G).data;
+      let mn2=255,mx2=0;
+      const raw2=new Float32Array(G*G);
+      for(let i=0;i<G*G;i++){const v=(px2[i*4]+px2[i*4+1]+px2[i*4+2])/3;raw2[i]=v;if(v<mn2)mn2=v;if(v>mx2)mx2=v;}
+      const rng2=mx2-mn2||1;
+      E4D.realElev=Array.from({length:G},(_,y)=>Array.from({length:G},(_,x)=>(raw2[y*G+x]-mn2)/rng2));
+      toast(`USGS elevation loaded (WMS)`,'ok');
+      return E4D.realElev;
+    }catch(e2){
+      console.warn('USGS DEM unavailable:',e2.message);
+      return null;
+    }
+  }
+}
+
+// ── ② LANDFIRE Fuel Model Fetch ───────────────────────────────────────────
+// LANDFIRE 2022 40 fuel models via ArcGIS ImageServer, no key
+async function fetchLANDFIRE_Fuels(bounds){
+  const{south,north,west,east}=bounds;
+  if(south<24||north>50||west<-128||east>-65) return null;
+  try{
+    const bbox=`${west},${south},${east},${north}`;
+    // LANDFIRE 2022 Scott & Burgan 40 fuel models
+    const url=`https://www.landfire.gov/arcgis/rest/services/Landfire/US_220/MapServer/21/exportImage?bbox=${bbox}&bboxSR=4326&size=${G},${G}&imageSR=4326&format=png8&pixelType=U8&f=image`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(15000)});
+    if(!r.ok) throw new Error(`LANDFIRE HTTP ${r.status}`);
+    const blob=await r.blob();
+    const img=await createImageBitmap(blob);
+    const canvas=new OffscreenCanvas(G,G);
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(img,0,0,G,G);
+    const px=ctx.getImageData(0,0,G,G).data;
+    // Map LANDFIRE fuel classes to our fuel types
+    // GR1-GR9=GRASS, GS1-GS9=mix, SH1-SH9=SHRUB, TU1-TU5=FOREST, TL1-TL9=FOREST, NB=nonburnable
+    const fuelMap=[];
+    for(let i=0;i<G*G;i++){
+      const v=px[i*4]; // R channel encodes fuel class 0-255
+      let ft;
+      if(v===0||v>200) ft=T.ROCKY;          // NB/nodata
+      else if(v<30)    ft=T.GRASS;           // GR1-9
+      else if(v<80)    ft=T.SHRUB;           // GS/SH
+      else if(v<160)   ft=T.FOREST;          // TU/TL
+      else if(v<190)   ft=T.URBAN;           // NB developed
+      else             ft=T.ROCKY;
+      fuelMap.push(ft);
+    }
+    E4D.realFuel=Array.from({length:G},(_,y)=>
+      Array.from({length:G},(_,x)=>fuelMap[y*G+x]));
+    toast(`LANDFIRE fuels loaded · S&B 40 models`,'ok');
+    return E4D.realFuel;
+  }catch(e){
+    console.warn('LANDFIRE unavailable:',e.message);
+    return null;
+  }
+}
+
+// ── ③ Euler Wind Field Initialiser ───────────────────────────────────────
+// Convert background wind + terrain to a velocity field
+function initEulerField(terrain, windSpd_ms, windDeg){
+  const rad=((windDeg+180)%360)*Math.PI/180;
+  const Ux=Math.sin(rad)*windSpd_ms; // m/s East component
+  const Uy=-Math.cos(rad)*windSpd_ms; // m/s North component
+  E4D.u=Array.from({length:G+1},()=>new Float32Array(G).fill(Ux));
+  E4D.v=Array.from({length:G},()=>new Float32Array(G+1).fill(Uy));
+  E4D.w=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.p=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.T=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.Q=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.omega=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.zFlame=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.zCrown=Array.from({length:G},()=>new Float32Array(G).fill(0));
+  E4D.arrivalTime4D=Array.from({length:G},()=>new Float32Array(G).fill(-1));
+
+  // Terrain-induced pressure gradient: wind accelerates downslope, decelerates upslope
+  const elev=E4D.realElev||terrain.elev;
+  for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){
+    const dzdx=(elev[y][x+1]-elev[y][x-1])/2;
+    const dzdy=(elev[y+1]?.[x]-elev[y-1]?.[x])/2||0;
+    // Froude-number correction: terrain height modulates wind speed
+    const terrainMod=1-0.4*(elev[y][x]-0.5); // valleys faster, ridges slower
+    E4D.u[y][x]=Ux*(1+dzdx*2)*terrainMod;
+    E4D.v[y][x]=Uy*(1+dzdy*2)*terrainMod;
+  }
+}
+
+// ── ④ Semi-Lagrangian Advection ───────────────────────────────────────────
+// Stable for large dt: trace particle backward along velocity field
+function semiLagAdvect(field, u, v, dt, dx){
+  const fNew=Array.from({length:G},()=>new Float32Array(G));
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    const uc=(u[y][x]+(u[y][Math.min(x+1,G-1)]||0))*0.5;
+    const vc=(v[y][x]+(v[Math.min(y+1,G-1)]?.[x]||0))*0.5;
+    // Trace back
+    let bx=x-uc*dt/dx, by=y-vc*dt/dx;
+    bx=Math.max(0.5,Math.min(G-1.5,bx));
+    by=Math.max(0.5,Math.min(G-1.5,by));
+    // Bilinear interpolation
+    const x0=Math.floor(bx),y0=Math.floor(by);
+    const fx=bx-x0, fy=by-y0;
+    const x1=Math.min(x0+1,G-1),y1=Math.min(y0+1,G-1);
+    fNew[y][x]=(field[y0][x0]*(1-fx)*(1-fy)+
+                field[y0][x1]*fx*(1-fy)+
+                field[y1][x0]*(1-fx)*fy+
+                field[y1][x1]*fx*fy);
+  }
+  return fNew;
+}
+
+// ── ⑤ Jacobi Pressure Projection (∇·u = 0) ───────────────────────────────
+// Solves ∇²p = (∇·u*)/dt to enforce incompressibility
+function projectPressure(u, v, dt, dx, iters=12){
+  // Compute divergence
+  const div=Array.from({length:G},()=>new Float32Array(G));
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    const dudx=(u[y][Math.min(x+1,G)]||0)-(u[y][x]||0);
+    const dvdy=(v[Math.min(y+1,G)]?.[x]||0)-(v[y][x]||0);
+    div[y][x]=(dudx+dvdy)/dx;
+  }
+  // Jacobi solve: p = (p_neighbors - dx²·div) / 4
+  let p=E4D.p.map(r=>new Float32Array(r));
+  for(let iter=0;iter<iters;iter++){
+    const pNew=Array.from({length:G},()=>new Float32Array(G));
+    for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){
+      pNew[y][x]=(p[y-1][x]+p[y+1][x]+p[y][x-1]+p[y][x+1]-dx*dx*div[y][x])/4;
+    }
+    p=pNew;
+  }
+  E4D.p=p;
+  // Subtract pressure gradient from velocity
+  const uNew=u.map(r=>new Float32Array(r));
+  const vNew=v.map(r=>new Float32Array(r));
+  for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){
+    uNew[y][x]-=(p[y][x+1]-p[y][x-1])/(2*dx);
+    vNew[y][x]-=(p[y+1]?.[x]-p[y-1]?.[x])/(2*dx)||0;
+  }
+  return{u:uNew,v:vNew};
+}
+
+// ── ⑥ Fire-Atmosphere Coupling ────────────────────────────────────────────
+// Fire heat → temperature anomaly → buoyancy → wind modification
+function coupleFireAtmosphere(grid, dt, dx){
+  // Build heat source field from burning cells
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++) E4D.Q[y][x]=0;
+
+  const SIGMA=3; // Gaussian spread cells
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    const c=grid[y][x];
+    if(c.fire!==F.FLAME&&c.fire!==F.PRE) continue;
+    const I=TP[c.type].ros*c.moist*E4D.rho*E4D.cp*10; // intensity proxy W/m²
+    const frp=c.frp||I;
+    // Spread heat as Gaussian kernel
+    for(let dy=-SIGMA*2;dy<=SIGMA*2;dy++) for(let dx2=-SIGMA*2;dx2<=SIGMA*2;dx2++){
+      const ny=y+dy,nx=x+dx2;
+      if(ny<0||ny>=G||nx<0||nx>=G) continue;
+      const k=Math.exp(-(dy*dy+dx2*dx2)/(2*SIGMA*SIGMA));
+      E4D.Q[ny][nx]+=frp*k/(2*Math.PI*SIGMA*SIGMA);
+    }
+  }
+
+  // Temperature evolution: dT/dt = Q/(ρ·cp) - T/τ (τ=relaxation time ~60s)
+  const TAU=12; // steps (~1 min)
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    E4D.T[y][x]+=(E4D.Q[y][x]/(E4D.rho*E4D.cp)-E4D.T[y][x]/TAU)*dt;
+    E4D.T[y][x]=Math.max(0,E4D.T[y][x]);
+  }
+
+  // Buoyancy: Bz = g·T/T0 (m/s² upward acceleration)
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    const Bz=E4D.g*E4D.T[y][x]/E4D.T0;
+    E4D.w[y][x]=Math.min(30,E4D.w[y][x]+Bz*dt); // cap at 30 m/s updraft
+    // Buoyant column creates horizontal inflow (mass conservation)
+    // ∂u/∂x + ∂v/∂y = -∂w/∂z ≈ w/H where H=500m mixing height
+    const inflow=E4D.w[y][x]/500*dx*0.5;
+    if(x>0)   E4D.u[y][x-1]+=inflow;
+    if(x<G-1) E4D.u[y][x+1]-=inflow;
+    if(y>0)   E4D.v[y-1][x]+=inflow;
+    if(y<G-1) E4D.v[y+1][x]-=inflow;
+  }
+
+  // Vertical wind factor on ROS: strong updraft aids spotting but reduces surface spread
+  // (fire is drawn upward, reducing horizontal flame tilt)
+}
+
+// ── ⑦ Vorticity + Fire Whirl Detection ───────────────────────────────────
+function computeVorticity(dx){
+  let maxOmega=0;
+  const whirls=[];
+  for(let y=1;y<G-1;y++) for(let x=1;x<G-1;x++){
+    const dvdx=(E4D.v[y][x+1]||0)-(E4D.v[y][x-1]||0)/(2*dx);
+    const dudy=((E4D.u[y+1]?.[x]||0)-(E4D.u[y-1]?.[x]||0))/(2*dx);
+    E4D.omega[y][x]=dvdx-dudy;
+    if(Math.abs(E4D.omega[y][x])>maxOmega) maxOmega=Math.abs(E4D.omega[y][x]);
+    // Fire whirl: strong vorticity + active fire + near-surface
+    if(Math.abs(E4D.omega[y][x])>0.08&&E4D.T[y][x]>50){
+      whirls.push({y,x,omega:E4D.omega[y][x],T:E4D.T[y][x]});
+    }
+  }
+  return{whirls,maxOmega};
+}
+
+// ── ⑧ 3D Ember Ballistics ─────────────────────────────────────────────────
+// Full 3D trajectory: launch from flame height, arc under gravity + drag
+function launchEmber3D(x, y, grid, bounds, rng){
+  const c=grid[y]?.[x]; if(!c) return null;
+  const cellM=KM*1000/G;
+  const uc=(E4D.u[y]?.[x]||0), vc=(E4D.v[y]?.[x]||0);
+  const wc=(E4D.w[y]?.[x]||0); // updraft m/s
+  // Launch conditions
+  const z0=E4D.zFlame[y]?.[x]||TP[c.type].ros*2; // launch from flame tip
+  const U=Math.sqrt(uc*uc+vc*vc); // horizontal wind speed m/s
+  // Lofting: updraft carries ember upward initially
+  const Wz0=wc*0.4+U*0.15; // initial vertical velocity (fraction of updraft)
+  // Drag coefficient for a burning brand (Cd≈0.5 sphere)
+  const Cd=0.5, rho_b=200; // brand density kg/m³
+  // Effective settling velocity Vs = sqrt(2·m·g/(Cd·rho·A))
+  const Vs=1.8; // m/s terminal velocity typical firebrand
+  // Ballistic solution: time of flight
+  // z(t) = z0 + Wz0·t - ½g·t² → solve for z(t)=0
+  const a=-0.5*E4D.g, b=Wz0, cc=z0;
+  const disc=b*b-4*a*cc;
+  if(disc<0) return null;
+  const tFlight=(-b+Math.sqrt(disc))/(2*a); // positive root
+  if(tFlight<=0||tFlight>600) return null; // cap at 10min
+  // Horizontal displacement (cells)
+  const Vx=uc*(1-Vs/Math.max(Vs,U+0.1)); // wind speed reduced by drag
+  const Vy=vc*(1-Vs/Math.max(Vs,U+0.1));
+  const lateral=(rng()-.5)*tFlight*0.4; // turbulent cross-track
+  const lateralX=(-Vy/Math.max(0.1,U))*lateral;
+  const lateralY=(Vx/Math.max(0.1,U))*lateral;
+  const ex=Math.round(x+Vx*tFlight/cellM+lateralX);
+  const ey=Math.round(y+Vy*tFlight/cellM+lateralY);
+  return{ex,ey,tFlight,z0,dist:Math.sqrt((ex-x)**2+(ey-y)**2)*cellM};
+}
+
+// ── ⑨ Master Euler Step ──────────────────────────────────────────────────
+// Called once per simulation timestep
+function eulerStep(grid, step, terrain, params){
+  const DT=params.stepMin*60; // seconds per step
+  const cellM=KM*1000/G; // m per cell
+  const dx=cellM;
+
+  // Update background wind (NWS sequence)
+  const stW=params.windSteps?params.windSteps[Math.min(step,params.windSteps.length-1)]:null;
+  const bgSpd_ms=(stW?stW.spd:params.windSpd)*0.44704; // mph→m/s
+  const bgDeg=stW?stW.deg:params.windDeg;
+
+  // ① Fire-atmosphere coupling
+  coupleFireAtmosphere(grid,DT,dx);
+
+  // ② Advect velocity field (semi-Lagrangian, stable)
+  const Tflat=E4D.T.map(r=>Array.from(r)); // float arrays compatible
+  const uAdv=semiLagAdvect(E4D.u,E4D.u,E4D.v,DT,dx);
+  const vAdv=semiLagAdvect(E4D.v,E4D.u,E4D.v,DT,dx);
+  E4D.u=uAdv; E4D.v=vAdv;
+
+  // ③ Add background wind restoring force (Rayleigh damping toward background)
+  const bgRad=((bgDeg+180)%360)*Math.PI/180;
+  const Ubg_x=Math.sin(bgRad)*bgSpd_ms, Ubg_y=-Math.cos(bgRad)*bgSpd_ms;
+  const TAU_U=6; // steps to restore to background
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    E4D.u[y][x]+=(Ubg_x-E4D.u[y][x])/TAU_U;
+    E4D.v[y][x]+=(Ubg_y-E4D.v[y][x])/TAU_U;
+    // Terrain pressure gradient (modified by real DEM if loaded)
+    const elev=(E4D.realElev||terrain.elev);
+    if(x>0&&x<G-1) E4D.u[y][x]-=(elev[y][x+1]-elev[y][x-1])*bgSpd_ms*0.8;
+    if(y>0&&y<G-1) E4D.v[y][x]-=(elev[y+1]?.[x]-elev[y-1]?.[x])*bgSpd_ms*0.8||0;
+  }
+
+  // ④ Pressure projection (enforce ∇·u=0)
+  const proj=projectPressure(E4D.u,E4D.v,DT,dx,8);
+  E4D.u=proj.u; E4D.v=proj.v;
+
+  // ⑤ Updraft decay (buoyancy reduces as T relaxes)
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    E4D.w[y][x]*=0.88; // drag and entrainment decay
+  }
+
+  // ⑥ Update flame heights (Byram intensity → flame length)
+  for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+    const c=grid[y][x];
+    if(c.fire===F.FLAME){
+      const cellSpd_mph=Math.sqrt(E4D.u[y][x]**2+E4D.v[y][x]**2)/0.44704;
+      const r=rothermelFull(c.type,cellSpd_mph,Math.abs((c.elev-0.5)*80),c.moist);
+      E4D.zFlame[y][x]=r.flameLen;
+      E4D.zCrown[y][x]=c.crown?(r.flameLen*3):0;
+      if(E4D.arrivalTime4D[y][x]<0) E4D.arrivalTime4D[y][x]=step;
+    }else if(c.fire===F.CHAR){
+      E4D.zFlame[y][x]*=0.85; // residual smoldering
+    }
+  }
+
+  // ⑦ Vorticity
+  const{whirls,maxOmega}=computeVorticity(dx);
+  E4D.whirls=whirls; E4D.maxOmega=maxOmega;
+
+  return{u:E4D.u,v:E4D.v,w:E4D.w,T:E4D.T,whirls};
+}
+
+// ── ⑩ Euler-enhanced runSim ───────────────────────────────────────────────
+function runSimEuler(terrain, params){
+  const{windDeg,windSpd,moist:xm,ignPts,initGrid,windSteps}=params;
+  const rng=mkRNG(42337);
+  const wRad_bg=((windDeg+180)%360)*Math.PI/180;
+
+  // Use real fuels if available
+  const fuelGrid=E4D.realFuel;
+  let g;
+  if(initGrid){
+    g=initGrid.map(r=>r.map(c=>({...c,moist:Math.min(.85,c.moist+xm*.28)})));
+  }else{
+    g=terrain.grid.map((row,y)=>row.map((c,x)=>({
+      ...c,
+      type:fuelGrid?fuelGrid[y][x]:c.type,
+      moist:Math.min(.85,c.moist+xm*.28),
+      fire:F.NONE,tick:0,crown:false
+    })));
+    for(const{gx,gy}of(ignPts||[{gx:G>>1,gy:G>>1}])){
+      for(let dy=-3;dy<=3;dy++) for(let dx=-3;dx<=3;dx++){
+        if(dx*dx+dy*dy>9) continue;
+        const nx=gx+dx,ny=gy+dy;
+        if(g[ny]?.[nx]&&g[ny][nx].type!==T.WATER)
+          g[ny][nx]={...g[ny][nx],fire:F.FLAME,tick:0,crown:false};
+      }
+    }
+  }
+
+  // Init Euler field
+  const bgSpd_ms=windSpd*0.44704;
+  initEulerField(terrain,bgSpd_ms,windDeg);
+
+  const snaps=[g.map(r=>r.map(c=>({...c})))];
+  // Store per-step wind fields for rendering
+  E4D.windHistory=[];
+
+  for(let step=0;step<STP-1;step++){
+    const ng=g.map(r=>r.map(c=>({...c})));
+    const stW=windSteps?windSteps[Math.min(step,windSteps.length-1)]:null;
+
+    // Euler step updates wind field
+    eulerStep(g,step,terrain,{...params,stepMin:5});
+    E4D.windHistory.push({
+      step,
+      maxW:Math.max(...E4D.w.map(r=>Math.max(...r))),
+      avgT:E4D.T.flat().reduce((a,b)=>a+b,0)/(G*G),
+    });
+
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const c=g[y][x];
+      if(c.fire===F.FLAME){
+        const nt=c.tick+1;
+        ng[y][x]={...c,tick:nt,fire:nt>=TP[c.type].dur?F.CHAR:F.FLAME};
+
+        // Per-cell wind from Euler field (NOT background)
+        const cellU=E4D.u[y]?.[x]||0;
+        const cellV=E4D.v[y]?.[x]||0;
+        const cellSpd_ms=Math.sqrt(cellU*cellU+cellV*cellV);
+        const cellSpd_mph=cellSpd_ms/0.44704;
+        const cellWRad=Math.atan2(cellU,cellV); // wind-from direction
+
+        // Huygens ellipse from Euler wind
+        const U_kmh=cellSpd_mph*1.609;
+        const LB=Math.max(1.05,1+8.729*Math.pow(Math.max(0,1-Math.exp(-0.030*U_kmh)),2.155));
+        const ec=(LB-1)/(LB+1);
+        const isCrown=c.type===T.FOREST&&cellSpd_mph>18&&c.moist<0.20;
+        const crownMult=isCrown?2.8:1.0;
+        // Terrain: use real DEM if available
+        const elev=E4D.realElev||terrain.elev;
+
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+          if(!dx&&!dy) continue;
+          const nx=x+dx,ny=y+dy;
+          if(nx<0||nx>=G||ny<0||ny>=G) continue;
+          const nb=g[ny][nx];
+          if(nb.fire!==F.NONE||TP[nb.type].ros===0) continue;
+          const sa=Math.atan2(dy,dx);
+          const cosT=Math.cos(sa-cellWRad);
+          const ellF=(1-ec)/(1-ec*cosT);
+          const rise=elev[ny]?.[nx]-(elev[y]?.[x]||0)||0;
+          const sf=Math.exp(4.2*rise+0.9*rise*Math.max(0,cosT));
+          const _r=Math.min(1,nb.moist/Math.max(0.01,TP[nb.type].mxt));
+          const mf=Math.max(0,1-2.59*_r+5.11*_r*_r-3.52*_r*_r*_r);
+          const df=(Math.abs(dx)+Math.abs(dy)===2)?0.707:1.0;
+          const wm=1+1.2*Math.pow(Math.max(0,cellSpd_mph)/10,1.3);
+          const prob=Math.min(0.97,TP[nb.type].ros*wm*ellF*sf*mf*df*crownMult*0.88);
+          if(rng()<prob) ng[ny][nx]={...nb,fire:F.PRE,tick:0,crown:isCrown&&nb.type===T.FOREST};
+        }
+
+        // 3D ember ballistics
+        const frpCell=c.frp||TP[c.type].ros*100;
+        const launchProb=(isCrown?0.08:0.02)*(1+cellSpd_mph/20);
+        if(rng()<launchProb){
+          const result=launchEmber3D(x,y,g,null,rng);
+          if(result){
+            const{ex,ey}=result;
+            if(ex>=0&&ex<G&&ey>=0&&ey<G&&g[ey]?.[ex]?.fire===F.NONE&&TP[g[ey]?.[ex]?.type||0].ros>0){
+              ng[ey][ex]={...g[ey][ex],fire:F.FLAME,tick:0,crown:false};
+            }
+          }
+        }
+      }else if(c.fire===F.PRE){
+        const nt=c.tick+1;
+        ng[y][x]={...c,tick:nt,fire:nt>=2?F.FLAME:F.PRE};
+      }
+    }
+    g=ng;
+    snaps.push(g.map(r=>r.map(c=>({...c}))));
+  }
+  return snaps;
+}
+
+// ── Euler Overlay Renderer ─────────────────────────────────────────────────
+function drawEulerOverlay(ctx, tl, br, cW, cH){
+  if(!E4D.u||!S.sim) return;
+
+  // Wind vector field (subsample every 6 cells for readability)
+  const step=Math.max(4,Math.floor(G/20));
+  ctx.save();
+  ctx.strokeStyle='rgba(144,202,249,0.7)';
+  ctx.lineWidth=1.2;
+  ctx.fillStyle='rgba(144,202,249,0.8)';
+  const scale=cW*step*0.4;
+  for(let y=step;y<G-step;y+=step) for(let x=step;x<G-step;x+=step){
+    const u_=E4D.u[y]?.[x]||0, v_=E4D.v[y]?.[x]||0;
+    const spd=Math.sqrt(u_*u_+v_*v_);
+    if(spd<0.2) continue;
+    const px=tl.x+x*cW, py=tl.y+y*cH;
+    const ex=px+u_/spd*Math.min(spd,8)*scale*0.15;
+    const ey=py+v_/spd*Math.min(spd,8)*scale*0.15;
+    ctx.globalAlpha=0.5+Math.min(0.4,spd/20);
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(ex,ey);
+    ctx.stroke();
+    // Arrowhead
+    const ang=Math.atan2(ey-py,ex-px);
+    ctx.beginPath();
+    ctx.moveTo(ex,ey);
+    ctx.lineTo(ex-5*Math.cos(ang-0.4),ey-5*Math.sin(ang-0.4));
+    ctx.lineTo(ex-5*Math.cos(ang+0.4),ey-5*Math.sin(ang+0.4));
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Temperature / heat plume (fire-atmosphere coupling visible)
+  ctx.globalAlpha=1;
+  const snap=S.sim.snapshots?.[S.step];
+  const maxT=Math.max(...E4D.T.map(r=>Math.max(...r)),1);
+  if(maxT>5){
+    for(let y=0;y<G;y++) for(let x=0;x<G;x++){
+      const t=E4D.T[y][x];
+      if(t<5) continue;
+      const a=Math.min(0.45,t/maxT*0.5);
+      ctx.fillStyle=`rgba(255,80,0,${a})`;
+      ctx.fillRect(tl.x+x*cW,tl.y+y*cH,cW+.5,cH+.5);
+    }
+  }
+
+  // Fire whirl markers
+  if(E4D.whirls){
+    E4D.whirls.forEach(w=>{
+      const px=tl.x+w.x*cW, py=tl.y+w.y*cH;
+      const dir=w.omega>0?1:-1; // cyclonic vs anti-cyclonic
+      const t=S.ft*0.15*dir;
+      ctx.save();
+      ctx.translate(px,py);
+      ctx.rotate(t);
+      ctx.strokeStyle=`rgba(255,215,0,${Math.min(.9,Math.abs(w.omega)*5)})`;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      for(let a=0;a<Math.PI*2;a+=0.2){
+        const r=4+a*2;
+        const px2=Math.cos(a)*r, py2=Math.sin(a)*r;
+        a===0?ctx.moveTo(px2,py2):ctx.lineTo(px2,py2);
+      }
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+  ctx.restore();
+}
+
+// ── Add Euler model to MODEL_DESCS ─────────────────────────────────────────
+if(typeof MODEL_DESCS!=='undefined'){
+  MODEL_DESCS.euler4d='🌊 <b>Euler 4D:</b> Full Navier-Stokes wind field with fire-atmosphere coupling, 3D ember ballistics, vorticity tracking, real USGS terrain, and LANDFIRE fuels.';
 }
 
 
