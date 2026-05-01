@@ -236,6 +236,7 @@ button{font-family:inherit;cursor:pointer}
     <button class="tab" data-t="lyrs">🗺 Layers</button>
     <button class="tab" data-t="data">📊 Data</button>
     <button class="tab" data-t="expo">⬇ Export</button>
+  <button class="tab" data-t="risk">🧠 Risk</button>
   </div>
 
   <!-- PROJECT -->
@@ -419,6 +420,7 @@ button{font-family:inherit;cursor:pointer}
     <div id="struct-count" style="font-size:11px;color:var(--f3);margin-bottom:8px"></div>
     <div id="risk-table" style="font-size:11px;color:var(--f3)">Run a projection first</div>
     <div class="sh">Open Data Sources</div>
+    <div id="source-panel" style="margin-bottom:8px"></div>
     <div class="srclist">
       <div class="srci"><div class="sdot ld" id="s0"></div>NIFC · Active Perimeters</div>
       <div class="srci"><div class="sdot ld" id="s1"></div>NIFC · WFIGS Incidents</div>
@@ -451,6 +453,16 @@ button{font-family:inherit;cursor:pointer}
     <div class="abox" style="margin-top:14px">
       <div class="at">📜 LICENSE</div>
       <div class="ab">Code: MIT · No API keys<br>NIFC data: Public Domain<br>NOAA NWS: Public Domain<br>NASA GIBS: Public Domain<br>OSM: ODbL License</div>
+    </div>
+  </div>
+  <!-- RISK INTELLIGENCE TAB -->
+  <div class="tc" id="t-risk">
+    <div class="sh" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
+      🧠 Risk Intelligence
+      <button onclick="refreshIntelligence()" style="font-size:9.5px;padding:3px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--f2);cursor:pointer">↺ Refresh</button>
+    </div>
+    <div id="risk-panel" style="font-size:11px;color:var(--f3)">
+      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to load intelligence.</div>
     </div>
   </div>
 </aside>
@@ -825,6 +837,11 @@ function afterProject(){
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
   ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
+  if(S.sim?.bounds&&S.sim?.center){
+    runIntelligenceLayer(S.sim.center.lat,S.sim.center.lng,S.sim.bounds).then(()=>{
+      updateRiskPanel();updateSourcePanel();
+    });
+  }
   // Update source dots for real data
   if(typeof E4D!=='undefined'&&E4D.dataLoaded){
     const s13=$('s13'),s14=$('s14');
@@ -1706,6 +1723,11 @@ async function autoProject(lat,lng,name,acres){
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
   ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
+  if(S.sim?.bounds&&S.sim?.center){
+    runIntelligenceLayer(S.sim.center.lat,S.sim.center.lng,S.sim.bounds).then(()=>{
+      updateRiskPanel();updateSourcePanel();
+    });
+  }
   // Update source dots for real data
   if(typeof E4D!=='undefined'&&E4D.dataLoaded){
     const s13=$('s13'),s14=$('s14');
@@ -3749,7 +3771,8 @@ function runSimEuler(terrain, params){
           const mf=Math.max(0,1-2.59*_r+5.11*_r*_r-3.52*_r*_r*_r);
           const df=(Math.abs(dx)+Math.abs(dy)===2)?0.707:1.0;
           const wm=1+1.2*Math.pow(Math.max(0,cellSpd_mph)/10,1.3);
-          const prob=Math.min(0.97,TP[nb.type].ros*wm*ellF*sf*mf*df*crownMult*0.88);
+          const intM=typeof getDroughtMult==='function'?Math.min(1.6,getDroughtMult()):1;
+          const prob=Math.min(0.97,TP[nb.type].ros*wm*ellF*sf*mf*df*crownMult*0.88*intM);
           if(rng()<prob) ng[ny][nx]={...nb,fire:F.PRE,tick:0,crown:isCrown&&nb.type===T.FOREST};
         }
 
@@ -4073,6 +4096,525 @@ function drawFireStateOverlay(ctx, tl, br, cW, cH){
 let S_showMovVectors=true;
 Object.defineProperty(window,'S_showMovVectors',{get:()=>S.showMovVectors??true,set:v=>S.showMovVectors=v});
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  WILDFIRE INTELLIGENCE ENGINE v1.0
+//  Drought · Solar · Historical analogs · Weather depth · Confidence scoring
+//  Source registry · Risk Intelligence tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── SunCalc inline (mourner/suncalc, BSD) — no CDN needed ─────────────────
+const SunCalc=(()=>{
+  const PI=Math.PI,sin=Math.sin,cos=Math.cos,tan=Math.tan,asin=Math.asin,atan=Math.atan2,acos=Math.acos,rad=PI/180;
+  const dayMs=1e3*60*60*24,J1970=2440588,J2000=2451545,e=rad*23.4397;
+  const toJ=d=>d.valueOf()/dayMs-0.5+J1970;
+  const fromJ=j=>new Date((j+0.5-J1970)*dayMs);
+  const toDays=d=>toJ(d)-J2000;
+  const rightAscension=(l,b)=>atan(sin(l)*cos(e)-tan(b)*sin(e),cos(l));
+  const declination=(l,b)=>asin(sin(b)*cos(e)+cos(b)*sin(e)*sin(l));
+  const azimuth=(H,phi,dec)=>atan(sin(H),cos(H)*sin(phi)-tan(dec)*cos(phi));
+  const altitude=(H,phi,dec)=>asin(sin(phi)*sin(dec)+cos(phi)*cos(dec)*cos(H));
+  const siderealTime=(d,lw)=>rad*(280.16+360.9856235*d)-lw;
+  const solarMeanAnomaly=d=>rad*(357.5291+0.98560028*d);
+  const eclipticLongitude=M=>{const C=rad*(1.9148*sin(M)+0.02*sin(2*M)+3e-4*sin(3*M)),P=rad*102.9372;return M+C+P+PI;};
+  const sunCoords=d=>{const M=solarMeanAnomaly(d),L=eclipticLongitude(M);return{dec:declination(L,0),ra:rightAscension(L,0)};};
+  const getPosition=(date,lat,lng)=>{
+    const lw=rad*-lng,phi=rad*lat,d=toDays(date),c=sunCoords(d),H=siderealTime(d,lw)-c.ra;
+    return{azimuth:azimuth(H,phi,c.dec),altitude:altitude(H,phi,c.dec)};
+  };
+  const J0=0.0009;
+  const julianCycle=(d,lw)=>Math.round(d-J0-lw/(2*PI));
+  const approxTransit=(Ht,lw,n)=>J0+(Ht+lw)/(2*PI)+n;
+  const solarTransitJ=(ds,M,L)=>J2000+ds+0.0053*sin(M)-0.0069*sin(2*L);
+  const hourAngle=(h,phi,d)=>acos((sin(h)-sin(phi)*sin(d))/(cos(phi)*cos(d)));
+  const observerAngle=h=>-2.076*Math.sqrt(h)/60;
+  function getSetJ(h,lw,phi,dec,n,M,L){
+    const w=hourAngle(h,phi,dec);
+    if(isNaN(w)) return NaN;
+    const a=approxTransit(w,lw,n);
+    return solarTransitJ(a,M,L);
+  }
+  const getTimes=(date,lat,lng,elev=0)=>{
+    const lw=rad*-lng,phi=rad*lat,dh=observerAngle(elev),d=toDays(date);
+    const n=julianCycle(d,lw),ds=approxTransit(0,lw,n),M=solarMeanAnomaly(ds);
+    const L=eclipticLongitude(M),dec=declination(L,0),Jnoon=solarTransitJ(ds,M,L);
+    const times=[[-0.833,'sunrise','sunset'],[-0.3,'sunriseEnd','sunsetStart'],
+      [-6,'dawn','dusk'],[-12,'nauticalDawn','nauticalDusk'],[-18,'nightEnd','night'],
+      [6,'goldenHourEnd','goldenHour']];
+    const result={solarNoon:fromJ(Jnoon),nadir:fromJ(Jnoon-0.5)};
+    times.forEach(([a,r,s])=>{
+      const Jset=getSetJ(rad*(a+dh),lw,phi,dec,n,M,L);
+      result[r]=fromJ(Jnoon-(Jset-Jnoon));
+      result[s]=fromJ(Jset);
+    });
+    return result;
+  };
+  return{getPosition,getTimes};
+})();
+
+// ── Source Registry ────────────────────────────────────────────────────────
+const SOURCES={
+  nws:       {label:'NWS Forecast Grid',   status:'unknown',updatedAt:null,ageMin:null,required:true},
+  drought:   {label:'U.S. Drought Monitor',status:'unknown',updatedAt:null,ageMin:null,required:false},
+  mtbs:      {label:'MTBS Burn Severity',  status:'unknown',updatedAt:null,ageMin:null,required:false},
+  history:   {label:'WFIGS Fire History',  status:'unknown',updatedAt:null,ageMin:null,required:false},
+  firms:     {label:'NASA FIRMS IR',       status:'unknown',updatedAt:null,ageMin:null,required:false},
+  raws:      {label:'RAWS Stations',       status:'unknown',updatedAt:null,ageMin:null,required:false},
+  swpc:      {label:'NOAA SWPC Kp Index',  status:'unknown',updatedAt:null,ageMin:null,required:false},
+  solar:     {label:'Solar Geometry',      status:'computed',updatedAt:new Date(),ageMin:0,required:false},
+  usgs_dem:  {label:'USGS 3DEP DEM',       status:'unknown',updatedAt:null,ageMin:null,required:false},
+  landfire:  {label:'LANDFIRE 2022 Fuels', status:'unknown',updatedAt:null,ageMin:null,required:false},
+};
+
+function srcOk(k){SOURCES[k].status='ok';SOURCES[k].updatedAt=new Date();SOURCES[k].ageMin=0;}
+function srcErr(k){SOURCES[k].status='err';}
+function srcAge(k){
+  if(!SOURCES[k].updatedAt) return null;
+  return Math.round((Date.now()-SOURCES[k].updatedAt.getTime())/60000);
+}
+
+// ── Solar Intelligence ─────────────────────────────────────────────────────
+function computeSolarContext(lat,lng,date=new Date()){
+  const pos=SunCalc.getPosition(date,lat,lng);
+  const times=SunCalc.getTimes(date,lat,lng);
+  const altDeg=pos.altitude*(180/Math.PI);
+  // Day length
+  const dayLen=(times.sunset-times.sunrise)/3600000; // hours
+  // Normalized elevation 0-1 relative to max (~70° at equator)
+  const normElev=Math.max(0,altDeg)/90;
+  // Solar heating factor (Rothermel 1983 proxy)
+  const clearSky=1.0; // could integrate cloud cover from NWS
+  const solarHeat=Math.max(0.85,Math.min(1.15,0.85+0.30*normElev*clearSky));
+  // Fine fuel moisture depression from solar heating
+  const solarMoistFactor=Math.max(0.82,Math.min(1.1,1.1-0.2*normElev));
+  // Peak heating window (hours around solar noon)
+  const noon=times.solarNoon;
+  const peakStart=new Date(noon.getTime()-1.5*3600000);
+  const peakEnd=new Date(noon.getTime()+2*3600000);
+  const inPeakWindow=date>=peakStart&&date<=peakEnd;
+  return{
+    altitudeDeg:altDeg,azimuthDeg:pos.azimuth*(180/Math.PI)+180,
+    dayLengthH:dayLen,
+    sunrise:times.sunrise,sunset:times.sunset,solarNoon:noon,
+    normElev,solarHeat,solarMoistFactor,inPeakWindow,
+    peakStart,peakEnd,
+  };
+}
+
+// ── Drought Intelligence ───────────────────────────────────────────────────
+// USDM ArcGIS FeatureServer — weekly CONUS polygons, CORS-enabled, no key
+const USDM_URL='https://services5.arcgis.com/0OTVzJS4K09zlixn/arcgis/rest/services/USDM_current/FeatureServer/0/query';
+
+let droughtCtx=null;
+
+async function fetchDrought(lat,lng){
+  try{
+    const params=new URLSearchParams({
+      geometry:`${lng},${lat}`,geometryType:'esriGeometryPoint',
+      inSR:'4326',spatialRel:'esriSpatialRelIntersects',
+      outFields:'DM,DMCAT',returnGeometry:'false',f:'json'
+    });
+    const r=await fetch(`${USDM_URL}?${params}`,{signal:AbortSignal.timeout(10000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    const feat=d.features?.[0];
+    const dm=feat?.attributes?.DM??-1; // -1=no drought
+    const labels=['None','Abnormally Dry','Moderate','Severe','Extreme','Exceptional'];
+    const colors=['#aaa','#FFFF00','#FCD37F','#FFAA00','#E60000','#730000'];
+    droughtCtx={dm,label:dm<0?'No drought':labels[dm+1]||'D'+dm,
+      color:dm<0?'#4CAF50':colors[dm+1]||'#730000',
+      droughtMult:Math.max(0.75,Math.min(2.25,1.0+0.08*Math.max(0,dm)+0.012*Math.max(0,dm)*2))
+    };
+    srcOk('drought');
+    return droughtCtx;
+  }catch(e){
+    srcErr('drought');
+    droughtCtx={dm:-1,label:'Unknown',color:'#888',droughtMult:1.0};
+    return droughtCtx;
+  }
+}
+
+// ── Vapor Pressure Deficit (FAO-56 Tetens) ─────────────────────────────────
+function calcVPD(tempC,dewpointC){
+  const es=t=>0.6108*Math.exp(17.27*t/(t+237.3));
+  return Math.max(0,(es(tempC)-es(dewpointC)).toFixed(3)*1); // kPa
+}
+
+// ── Haines Index proxy from NWS gridpoint ──────────────────────────────────
+function hainesLabel(h){return h<=3?'Low':h<=4?'Moderate':'High';}
+
+// ── NOAA SWPC Kp index ─────────────────────────────────────────────────────
+let kpCtx=null;
+async function fetchKp(){
+  try{
+    const r=await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json',
+      {signal:AbortSignal.timeout(8000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    // last row has current Kp
+    const last=d[d.length-1];
+    const kp=parseFloat(last[1]);
+    kpCtx={kp,time:last[0],label:kp<2?'Quiet':kp<4?'Unsettled':kp<5?'Active':'Storm'};
+    srcOk('swpc');
+    return kpCtx;
+  }catch(e){
+    srcErr('swpc');
+    kpCtx={kp:null,label:'Unavailable'};
+    return kpCtx;
+  }
+}
+
+// ── NWS Extended Weather (gusts, RH, dewpoint, Haines) ─────────────────────
+// Supplements existing fetchNWSSequence with fire-weather depth
+let wxCtx=null;
+async function fetchFireWeather(lat,lng){
+  try{
+    const ptR=await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lng.toFixed(4)}`,
+      {signal:AbortSignal.timeout(10000)});
+    if(!ptR.ok) throw new Error(ptR.status);
+    const pt=await ptR.json();
+    const gridUrl=pt.properties?.forecastGridData;
+    if(!gridUrl) throw new Error('No gridUrl');
+    const gridR=await fetch(gridUrl,{signal:AbortSignal.timeout(12000)});
+    if(!gridR.ok) throw new Error(gridR.status);
+    const grid=await gridR.json();
+    const P=grid.properties;
+    // Pull first value from each grid layer (current conditions proxy)
+    const firstVal=layer=>{
+      const v=P[layer]?.values?.[0]?.value;
+      return v!=null?parseFloat(v):null;
+    };
+    const tempC=firstVal('temperature');
+    const dewC=firstVal('dewpoint');
+    const rh=firstVal('relativeHumidity');
+    const hainesRaw=firstVal('hainesIndex');
+    const gust=firstVal('windGust'); // km/h
+    // Build per-step sequence with gust + RH (96 steps)
+    const wxSteps=[];
+    const now=Date.now();
+    for(let i=0;i<96;i++){
+      const t=new Date(now+i*5*60000);
+      const rhStep=rh!=null?Math.max(5,rh-i*0.1):50; // simple diurnal decline
+      const gustFactor=gust!=null?gust*0.27778:0; // km/h→m/s
+      wxSteps.push({step:i,rhPct:rhStep,gustMs:gustFactor,hainesProxy:hainesRaw??3});
+    }
+    const vpd=tempC!=null&&dewC!=null?calcVPD(tempC,dewC):null;
+    wxCtx={tempC,dewC,rhPct:rh,vpd,hainesRaw,gustKmh:gust,wxSteps,
+      office:pt.properties?.gridId,gridX:pt.properties?.gridX,gridY:pt.properties?.gridY};
+    srcOk('nws');
+    return wxCtx;
+  }catch(e){
+    srcErr('nws');
+    wxCtx={tempC:null,dewC:null,rhPct:null,vpd:null,hainesRaw:null,gustKmh:null,wxSteps:[]};
+    return wxCtx;
+  }
+}
+
+// ── Red Flag Warning fetch ─────────────────────────────────────────────────
+let redFlagActive=false;
+async function fetchRedFlag(lat,lng){
+  try{
+    const url=`https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lng.toFixed(4)}&status=actual`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    const rfEvents=['Red Flag Warning','Fire Weather Watch','Extreme Fire Danger'];
+    const rfAlerts=(d.features||[]).filter(f=>rfEvents.includes(f.properties?.event));
+    redFlagActive=rfAlerts.length>0;
+    return{active:redFlagActive,alerts:rfAlerts.map(f=>({
+      event:f.properties.event,
+      headline:f.properties.headline,
+      expires:f.properties.expires,
+    }))};
+  }catch(e){
+    return{active:false,alerts:[]};
+  }
+}
+
+// ── WFIGS Historical Fire Perimeters ──────────────────────────────────────
+// Fetches historical fires near a point from InterAgencyFirePerimeterHistory
+const WFIGS_HIST='https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/InterAgencyFirePerimeterHistory_All_Years_View/FeatureServer/0/query';
+
+let historicalFires=[];
+async function fetchHistoricalFires(bounds){
+  try{
+    const{south,north,west,east}=bounds;
+    const geom=encodeURIComponent(JSON.stringify({
+      xmin:west,ymin:south,xmax:east,ymax:north,spatialReference:{wkid:4326}
+    }));
+    const url=`${WFIGS_HIST}?geometry=${geom}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=FIRE_NAME,FIRE_YEAR,GIS_ACRES,STATE,AGENCY&returnGeometry=true&f=geojson&resultRecordCount=50&orderByFields=FIRE_YEAR+DESC`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(12000)});
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json();
+    historicalFires=d.features||[];
+    srcOk('history');
+    return historicalFires;
+  }catch(e){
+    srcErr('history');
+    return[];
+  }
+}
+
+// ── Historical Fire Map Layer (Leaflet) ───────────────────────────────────
+let histLayer=null;
+function renderHistoricalFireLayer(feats,bounds){
+  if(histLayer) S.map.removeLayer(histLayer);
+  histLayer=L.layerGroup().addTo(S.map);
+  feats.forEach(feat=>{
+    const p=feat.properties||{};
+    const yr=p.FIRE_YEAR||'?';
+    const nm=p.FIRE_NAME||'Unknown';
+    const ac=p.GIS_ACRES?Math.round(p.GIS_ACRES).toLocaleString():'?';
+    const hue=Math.max(0,Math.min(60,60*(2024-yr)/20)); // recent=red, older=yellow
+    const color=`hsl(${hue},80%,55%)`;
+    if(feat.geometry){
+      const lyr=L.geoJSON(feat,{style:{color,weight:1.5,fillColor:color,fillOpacity:0.18,dashArray:'4,3'}});
+      lyr.bindPopup(`<b>🔥 ${nm}</b> (${yr})<br><small>${ac} acres · ${p.STATE||''} · ${p.AGENCY||''}</small>`);
+      histLayer.addLayer(lyr);
+    }
+  });
+}
+
+// ── Historical Analog Score ────────────────────────────────────────────────
+// Compare current conditions to historical fires in the region
+function scoreAnalog(hist,currentCtx){
+  const p=hist.properties||{};
+  const yr=p.FIRE_YEAR||2000;
+  // Month similarity (same season = higher score)
+  const nowMonth=new Date().getMonth();
+  const histMonth=5; // approximate summer peak if unknown
+  const monthSim=1-Math.abs(nowMonth-histMonth)/6;
+  // Acreage similarity proxy (large fire = more relevant)
+  const acSim=Math.min(1,(p.GIS_ACRES||100)/50000);
+  // Recency weight (recent fires more relevant)
+  const recency=Math.max(0,1-(2025-yr)/30);
+  const score=(monthSim*0.35+acSim*0.35+recency*0.30);
+  return{score,yr,name:p.FIRE_NAME||'Unknown',acres:p.GIS_ACRES||0,state:p.STATE||''};
+}
+
+function computeAnalogs(){
+  if(!historicalFires.length) return[];
+  const ctx={};
+  return historicalFires.map(f=>scoreAnalog(f,ctx))
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,3);
+}
+
+// ── Drought ROS Multiplier (applied to runSim) ─────────────────────────────
+function getDroughtMult(){
+  if(!droughtCtx) return 1.0;
+  const dm=Math.max(0,droughtCtx.dm);
+  const vpd=wxCtx?.vpd??0;
+  return Math.max(0.75,Math.min(2.25,
+    1.0+0.08*dm+0.012*vpd+0.006*Math.max(0,dm)*5
+  ));
+}
+
+// ── Weather ROS factors ────────────────────────────────────────────────────
+function getRHFactor(rhPct){
+  // Low RH → higher ROS. RH 100=0.7×, RH 20=1.3×
+  return Math.max(0.7,Math.min(1.5,1.3-0.006*Math.max(0,rhPct)));
+}
+
+function getInstabilityFactor(hainesProxy){
+  // Haines 2=1.0, 5=1.15, 6=1.25
+  return Math.max(1.0,Math.min(1.3,0.95+0.05*Math.max(0,hainesProxy-2)));
+}
+
+function getGustFactor(windSpd_mph,gustMs){
+  // Gust multiplier on peak spread (Albini 1976 stochastic)
+  if(!gustMs||gustMs<1) return 1.0;
+  const gustMph=gustMs*2.237;
+  return Math.max(1.0,Math.min(1.5,1+0.4*Math.max(0,gustMph-windSpd_mph)/Math.max(1,windSpd_mph)));
+}
+
+// Patch ROS computation to apply intelligence multipliers
+function intelligenceROSMult(step){
+  const droughtM=getDroughtMult();
+  const wxStep=wxCtx?.wxSteps?.[step];
+  const rhM=getRHFactor(wxStep?.rhPct??50);
+  const instM=getInstabilityFactor(wxStep?.hainesProxy??3);
+  const gustM=getGustFactor(S.windSpd,wxStep?.gustMs??0);
+  const solar=computeSolarContext(S.sim?.center?.lat??37,S.sim?.center?.lng??-119);
+  const solarM=solar.solarHeat;
+  return{
+    total:droughtM*rhM*instM*solarM,
+    drought:droughtM,rh:rhM,instability:instM,gust:gustM,solar:solarM
+  };
+}
+
+// ── Confidence Score ───────────────────────────────────────────────────────
+function computeConfidence(){
+  let score=100;
+  const ctx={
+    weather:{ok:SOURCES.nws.status==='ok',ageMin:srcAge('nws')},
+    fuels:{verified:SOURCES.landfire.status==='ok'},
+    terrain:{dem:SOURCES.usgs_dem.status==='ok'},
+    drought:{ok:SOURCES.drought.status==='ok'},
+    history:{ok:SOURCES.history.status==='ok'},
+    forecastHours:STP*5/60,
+    windGustMph:wxCtx?.gustKmh?wxCtx.gustKmh*0.621:0,
+  };
+  const reasons=[];
+  if(!ctx.weather.ok){score-=25;reasons.push('NWS weather unavailable');}
+  else if(ctx.weather.ageMin>60){score-=10;reasons.push(`Weather ${ctx.weather.ageMin}min old`);}
+  if(!ctx.fuels.verified){score-=20;reasons.push('Fuel model estimated (not LANDFIRE-verified)');}
+  if(!ctx.terrain.dem){score-=12;reasons.push('Terrain simplified (no USGS DEM)');}
+  if(!ctx.drought.ok){score-=10;reasons.push('Drought data unavailable');}
+  if(!ctx.history.ok){score-=8;reasons.push('No historical analog data');}
+  if(ctx.forecastHours>6){const p=Math.min(20,ctx.forecastHours*1.2);score-=p;reasons.push(`${ctx.forecastHours.toFixed(0)}h forecast (uncertainty ↑)`);}
+  if(ctx.windGustMph>35){score-=8;reasons.push(`Gusts ${ctx.windGustMph.toFixed(0)}mph (unstable wind)`);};
+  if(redFlagActive){score-=5;reasons.push('Red Flag Warning active (extreme conditions)');}
+  const final=Math.max(5,Math.min(95,Math.round(score)));
+  const label=final>=75?'HIGH':final>=50?'MEDIUM':final>=30?'LOW':'VERY LOW';
+  const color=final>=75?'var(--ok)':final>=50?'var(--inf)':final>=30?'var(--wrn)':'var(--err)';
+  return{score:final,label,color,reasons};
+}
+
+// ── Update Risk panel UI ───────────────────────────────────────────────────
+function updateRiskPanel(){
+  const conf=computeConfidence();
+  const solar=computeSolarContext(S.sim?.center?.lat??37,S.sim?.center?.lng??-119);
+  const analogs=computeAnalogs();
+  const rf=redFlagActive;
+  const dm=droughtCtx;
+  const wx=wxCtx;
+  const kp=kpCtx;
+  const mults=S.sim?intelligenceROSMult(S.step):{total:1,drought:1,rh:1,instability:1,solar:1};
+
+  // Fire weather section
+  const gwarn=rf?'<span style="color:var(--err);font-weight:700">⚠ RED FLAG ACTIVE</span>':'<span style="color:var(--ok)">No warnings</span>';
+  const windStr=wx?.gustKmh?`${Math.round(S.windSpd)} mph gusting ${Math.round(wx.gustKmh*0.621)}`:`${Math.round(S.windSpd)} mph`;
+  const hainesStr=wx?.hainesRaw!=null?`Haines ${wx.hainesRaw} (${hainesLabel(wx.hainesRaw)})`:' N/A';
+  const vpdStr=wx?.vpd!=null?`${wx.vpd.toFixed(2)} kPa`:'N/A';
+  const rhStr=wx?.rhPct!=null?`${Math.round(wx.rhPct)}%`:'—';
+
+  // Drought section
+  const dLabel=dm?.label||'Unknown';
+  const dColor=dm?.color||'#888';
+  const dMult=dm?.droughtMult||1;
+
+  // Solar section
+  const peakStr=solar.inPeakWindow?'<span style="color:var(--err)">NOW (peak)</span>':
+    `${solar.peakStart.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}–${solar.peakEnd.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
+  const altStr=solar.altitudeDeg>0?`${solar.altitudeDeg.toFixed(0)}°`:'Below horizon';
+  const dayStr=solar.dayLengthH>0?`${Math.floor(solar.dayLengthH)}h ${Math.round((solar.dayLengthH%1)*60)}m`:'—';
+
+  // Historical analogs
+  const analogHTML=analogs.length?analogs.map((a,i)=>`
+    <div style="background:var(--s2);border-radius:7px;padding:7px 9px;margin-bottom:5px">
+      <div style="font-weight:700;font-size:11px">${a.name} (${a.yr})</div>
+      <div style="font-size:9.5px;color:var(--f3)">${Math.round(a.acres).toLocaleString()} ac · ${a.state} · Similarity: ${Math.round(a.score*100)}%</div>
+    </div>`).join(''):'<div style="color:var(--f3);font-size:11px">No historical data loaded. Run projection first.</div>';
+
+  // Confidence
+  const reasonHTML=conf.reasons.map(r=>`<div style="font-size:10px;color:var(--f3);padding:2px 0">• ${r}</div>`).join('');
+
+  // Model multipliers
+  const multHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px">
+      ${[['Drought',mults.drought],['RH',mults.rh],['Instability',mults.instability],['Solar',mults.solar],['Combined',mults.total]].map(([l,v])=>`
+        <div style="background:var(--s2);border-radius:6px;padding:5px 8px">
+          <div style="font-size:8.5px;color:var(--f4)">${l}</div>
+          <div style="font-size:13px;font-weight:800;font-family:'DM Mono',monospace;color:${v>1.3?'var(--err)':v>1.1?'var(--wrn)':'var(--ok)'}">${v.toFixed(2)}×</div>
+        </div>`).join('')}
+    </div>`;
+
+  // Kp
+  const kpStr=kp?.kp!=null?`Kp=${kp.kp.toFixed(1)} (${kp.label})`:'Not loaded';
+
+  const panel=$('risk-panel');
+  if(!panel) return;
+  panel.innerHTML=`
+    <div class="sh" style="margin-top:0">🌦 Fire Weather</div>
+    <div style="padding:8px 10px;background:var(--s2);border-radius:9px;margin-bottom:10px;font-size:11px;line-height:1.8">
+      <div>Wind: <b>${windStr}</b></div>
+      <div>RH: <b>${rhStr}</b> · VPD: <b>${vpdStr}</b></div>
+      <div>${hainesStr}</div>
+      <div style="margin-top:4px">${gwarn}</div>
+    </div>
+
+    <div class="sh">🌵 Drought / Fuel Dryness</div>
+    <div style="padding:8px 10px;background:var(--s2);border-radius:9px;margin-bottom:10px;font-size:11px;line-height:1.8">
+      <div>Drought class: <b style="color:${dColor}">${dLabel}</b></div>
+      <div>VPD stress: <b>${wx?.vpd!=null?(wx.vpd>1.5?'High':wx.vpd>0.8?'Moderate':'Low'):'Unknown'}</b></div>
+      <div>ROS mult: <b style="color:${dMult>1.3?'var(--err)':dMult>1.1?'var(--wrn)':'var(--ok)'}">${dMult.toFixed(2)}×</b></div>
+    </div>
+
+    <div class="sh">⚡ Combined Model Multipliers</div>
+    ${multHTML}
+
+    <div class="sh" style="margin-top:10px">🔥 Historical Analogs</div>
+    ${analogHTML}
+
+    <div class="sh">☀ Solar / Diurnal</div>
+    <div style="padding:8px 10px;background:var(--s2);border-radius:9px;margin-bottom:10px;font-size:11px;line-height:1.8">
+      <div>Sun elevation: <b>${altStr}</b> · Day length: <b>${dayStr}</b></div>
+      <div>Peak heating: <b>${peakStr}</b></div>
+      <div>Heating factor: <b>${solar.solarHeat.toFixed(2)}×</b> · Moisture factor: <b>${solar.solarMoistFactor.toFixed(2)}×</b></div>
+      <div style="color:var(--f3);font-size:9.5px">Space weather: ${kpStr} (context only — not a fire driver)</div>
+    </div>
+
+    <div class="sh">📊 Model Confidence</div>
+    <div style="padding:8px 10px;background:var(--s2);border-radius:9px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-size:24px;font-weight:900;font-family:'DM Mono',monospace;color:${conf.color}">${conf.score}%</div>
+        <div style="font-size:12px;font-weight:700;color:${conf.color}">${conf.label}</div>
+      </div>
+      ${reasonHTML}
+    </div>
+
+    <div style="font-size:9.5px;color:var(--f4);padding:6px 4px;line-height:1.5;border-top:1px solid var(--s2);margin-top:4px">
+      ⚠ Research / planning aid only. Not a certified operational fire prediction system. 
+      Verify with FARSITE, FlamMap, or certified FBAN tools for life-safety decisions.
+    </div>`;
+}
+
+// ── Source freshness panel (Data tab) ──────────────────────────────────────
+function updateSourcePanel(){
+  const el=$('source-panel'); if(!el) return;
+  const rows=Object.entries(SOURCES).map(([k,s])=>{
+    const age=srcAge(k);
+    const ageStr=age!=null?`${age}min ago`:'—';
+    const dot=s.status==='ok'?'sdot':s.status==='err'?'sdot e':'sdot dim';
+    return`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2)">
+      <div class="${dot}"></div>
+      <div style="flex:1;font-size:10.5px">${s.label}</div>
+      <div style="font-size:9.5px;color:var(--f3);font-family:'DM Mono',monospace">${ageStr}</div>
+    </div>`;
+  });
+  el.innerHTML=rows.join('');
+}
+
+// ── Inject intelligence into autoProject ──────────────────────────────────
+// Called after basic zone setup — runs in parallel with sim
+async function runIntelligenceLayer(lat,lng,bounds){
+  chip('c-zone','⏳ Loading intelligence…','pulse dim');
+  const [wx,drought,rf,kp,hist]=await Promise.allSettled([
+    fetchFireWeather(lat,lng),
+    fetchDrought(lat,lng),
+    fetchRedFlag(lat,lng),
+    fetchKp(),
+    fetchHistoricalFires(bounds),
+  ]);
+  // Update source status
+  if(SOURCES.nws.status==='ok') {$('s1')&&($('s1').className='sdot');}
+  updateRiskPanel();
+  updateSourcePanel();
+  // Show red flag chip
+  if(redFlagActive) chip('c-data','⚠ RED FLAG','err');
+  // Render historical fires on map
+  if(historicalFires.length) renderHistoricalFireLayer(historicalFires,bounds);
+  chip('c-zone','✓ Intelligence ready','ok');
+  return{wx:wxCtx,drought:droughtCtx,kp:kpCtx};
+}
+
+
+function refreshIntelligence(){
+  if(!S.sim?.center||!S.sim?.bounds){toast('Run a projection first','e');return;}
+  runIntelligenceLayer(S.sim.center.lat,S.sim.center.lng,S.sim.bounds).then(()=>{
+    updateRiskPanel();updateSourcePanel();toast('Intelligence refreshed','o');
+  });
+}
 window.addEventListener('load',()=>{boot('Binding UI…');bindUI();bindModelSelector();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
 window.addEventListener('resize',()=>{S.map?.invalidateSize();sizeOv();draw();});
 </script>
