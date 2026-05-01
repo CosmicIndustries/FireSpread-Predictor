@@ -205,6 +205,100 @@ button{font-family:inherit;cursor:pointer}
 
 .kbd-active #kbd-hint{opacity:1!important}
 @media(max-width:720px){.side{width:280px}#map,.tl,#ov{left:0!important}.asub{display:none}.spd>span{display:none}}
+
+/* ── Refactor shell additions ──────────────────────────────────── */
+
+/* Primary run button */
+.run-btn{width:100%;padding:11px 14px;border:0;border-radius:12px;
+  background:linear-gradient(135deg,var(--pri),var(--pd,#E65100));color:#fff;
+  font-weight:800;font-size:14px;letter-spacing:.3px;cursor:pointer;
+  box-shadow:0 6px 20px rgba(255,109,0,.3);transition:all .2s;margin-bottom:10px}
+.run-btn:hover{box-shadow:0 8px 28px rgba(255,109,0,.45);transform:translateY(-1px)}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none}
+
+/* Mode badge over map */
+#mode-badge{position:fixed;top:64px;left:50%;transform:translateX(-50%);
+  z-index:700;background:rgba(9,20,33,.88);border:1px solid var(--s3);
+  border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;
+  color:var(--f2);backdrop-filter:blur(10px);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+#mode-badge.show{opacity:1}
+
+/* Floating map tool rail */
+.map-tools{position:fixed;right:14px;top:68px;z-index:650;
+  display:flex;flex-direction:column;gap:5px;padding:6px;
+  border:1px solid var(--s2);border-radius:14px;
+  background:rgba(9,20,33,.88);backdrop-filter:blur(10px)}
+.map-tools button{width:38px;height:38px;border:1px solid var(--s3);
+  border-radius:10px;background:var(--s2);color:var(--fg);font-size:16px;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.map-tools button:hover{background:var(--s3)}
+.map-tools button.on{background:var(--pri);border-color:var(--pb,#FF8F00);color:#fff}
+.map-tools button:focus-visible{outline:2px solid var(--pb,#FF8F00);outline-offset:2px}
+
+/* Mode sub-tab strip inside panel */
+.stabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
+.stab{padding:5px 10px;border-radius:8px;border:1px solid var(--s3);
+  background:transparent;color:var(--f3);font-size:10.5px;font-weight:700;
+  cursor:pointer;transition:all .15s}
+.stab.on{background:var(--s2);color:var(--fg);border-color:var(--s2)}
+.stab:hover:not(.on){background:var(--s2)}
+
+/* Model group labels */
+.model-group-label{font-size:8.5px;color:var(--f4);letter-spacing:1px;
+  text-transform:uppercase;padding:6px 0 3px;font-family:'DM Mono',monospace}
+.mbtn.experimental{opacity:.65;border-style:dashed}
+.mbtn.research{border-color:var(--inf,#42A5F5)22}
+
+/* Source health row */
+.src-row{display:flex;align-items:center;gap:8px;padding:6px 0;
+  border-bottom:1px solid var(--s2);font-size:10.5px}
+.src-row .sl{flex:1}
+.src-row .sa{font-size:9.5px;color:var(--f4);font-family:'DM Mono',monospace}
+
+/* Mobile bottom sheet */
+@media(max-width:720px){
+  .side{top:auto!important;left:0!important;right:0;bottom:76px;width:100%!important;
+    height:60vh;border-right:0;border-top:1px solid var(--s2);
+    border-radius:18px 18px 0 0;transform:translateY(calc(100% - 54px));
+    transition:transform .3s cubic-bezier(.4,0,.2,1)}
+  .side.open{transform:translateY(0)}
+  #map,#ov{left:0!important;bottom:76px}
+  .tl{left:0!important}
+  .chips{display:none}
+  .map-tools{top:68px;right:8px}
+  .sheet-handle{width:42px;height:4px;border-radius:999px;
+    background:var(--s3);margin:8px auto 6px;cursor:grab}
+}
+
+/* Focus states */
+button:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--pb,#FF8F00);outline-offset:2px}
+
+/* Reduced motion */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;
+    animation-iteration-count:1!important;transition-duration:.001ms!important}}
+
+/* Run/Analyze mode switcher in panel */
+.mode-pills{display:flex;gap:3px;margin-bottom:12px;background:var(--s2);
+  border-radius:10px;padding:3px}
+.mode-pill{flex:1;padding:6px 4px;border:0;border-radius:8px;
+  background:transparent;color:var(--f3);font-size:10px;font-weight:700;
+  cursor:pointer;transition:all .15s;text-align:center}
+.mode-pill.on{background:var(--surf,#09141F);color:var(--fg);
+  box-shadow:0 2px 8px rgba(0,0,0,.3)}
+
+/* Confidence chip styling */
+#c-confidence{cursor:pointer;transition:opacity .2s}
+#c-confidence:hover{opacity:.8}
+
+/* Collapsible section */
+.collapsible-hd{display:flex;justify-content:space-between;align-items:center;
+  cursor:pointer;user-select:none}
+.collapsible-hd .cc{font-size:11px;color:var(--f4);transition:transform .2s}
+.collapsible-hd.open .cc{transform:rotate(180deg)}
+
 </style>
 </head>
 <body>
@@ -218,96 +312,182 @@ button{font-family:inherit;cursor:pointer}
 </div>
 
 <header class="bar">
-  <button class="ibtn" id="menu-btn">☰</button>
-  <div><div class="atitle">🔥 FireSim Live</div><div class="asub">ROTHERMEL CA · EMBER SPOTTING · NWS WIND · NIFC LIVE DATA</div></div>
+  <button class="ibtn" id="menu-btn" aria-label="Toggle control panel" aria-expanded="true">☰</button>
+  <div><div class="atitle">🔥 FireSim Live</div><div class="asub">Research / planning aid — not operational fire-command guidance</div></div>
   <div class="chips">
     <div class="chip dim" id="c-data">🌐 Connecting…</div>
     <div class="chip pri" id="c-fires">⏳ —</div>
     <div class="chip ok"  id="c-acres">📐 —</div>
     <div class="chip inf" id="c-zone">🎯 Click map to project</div>
     <div class="chip dim" id="c-mode">📊 Single run</div>
+    <div class="chip dim" id="c-confidence" title="Model confidence — click for details" onclick="document.querySelector('[data-t=\'risk\']')?.click()">📊 —%</div>
+    <div class="chip dim" id="c-sources" title="Data sources status">📡 —</div>
   </div>
 </header>
 
 <aside class="side" id="side">
-  <div class="tabs">
-    <button class="tab on" data-t="proj">⚙ Project</button>
-    <button class="tab" data-t="ops">🚒 Ops</button>
-    <button class="tab" data-t="lyrs">🗺 Layers</button>
-    <button class="tab" data-t="data">📊 Data</button>
-    <button class="tab" data-t="expo">⬇ Export</button>
-  <button class="tab" data-t="risk">🧠 Risk</button>
-  <button class="tab" data-t="world">🌍 World</button>
-  <button class="tab" data-t="mem">🧬 Memory</button>
-  <button class="tab" data-t="evid">🔬 Evidence</button>
+  <div class="tabs" role="tablist" aria-label="Main sections">
+    <button class="tab on" data-t="proj" role="tab" aria-selected="true">🔥 Run</button>
+    <button class="tab" data-t="risk"    role="tab" aria-selected="false">📊 Analyze</button>
+    <button class="tab" data-t="world"   role="tab" aria-selected="false">🌍 World</button>
+    <button class="tab" data-t="lyrs"    role="tab" aria-selected="false">🗺 Layers</button>
+    <button class="tab" data-t="expo"    role="tab" aria-selected="false">⬇ Export</button>
   </div>
 
   <!-- PROJECT -->
-  <div class="tc on" id="t-proj">
-    <div class="hint">
-      <span class="ic">👆</span>
-      <div><b>Click the map to project spread</b> from any point. <b>NOAA/NWS wind is auto-fetched</b> for US locations. Multiple clicks add ignition points.</div>
+  <div class="tc on" id="t-proj" role="tabpanel">
+  <!-- Mode sheet handle for mobile -->
+  <div class="sheet-handle" aria-hidden="true"></div>
+
+  <!-- Sub-tab strip -->
+  <div class="stabs" id="run-stabs">
+    <button class="stab on" data-st="setup">⚙ Setup</button>
+    <button class="stab" data-st="weather">🌦 Weather</button>
+    <button class="stab" data-st="ignition">🔥 Ignition</button>
+    <button class="stab" data-st="advanced">🔬 Advanced</button>
+  </div>
+
+  <!-- SETUP sub-panel -->
+  <div id="rst-setup">
+    <!-- Model group: Production -->
+    <div class="model-group-label">⚡ Production</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+      <button class="mbtn on" data-model="fast" style="padding:8px 4px;font-size:10.5px">⚡ Fast Tactical<br><span style="font-size:8px;opacity:.7">Huygens+Rothermel</span></button>
+      <button class="mbtn research" data-model="cell2fire" style="padding:8px 4px;font-size:10.5px">🎲 Cell2Fire<br><span style="font-size:8px;opacity:.7">100× Monte Carlo</span></button>
     </div>
-    <!-- Model selector -->
-    <div class="sh" style="margin-top:0">Simulation Model</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:10px" id="model-grid">
-      <button class="mbtn on" data-model="fast"    style="padding:8px 4px;font-size:10px">⚡ Fast<br><span style="font-size:8px;opacity:.7">Tactical</span></button>
-      <button class="mbtn"    data-model="flammap"  style="padding:8px 4px;font-size:10px">🗺 FlamMap<br><span style="font-size:8px;opacity:.7">Hazard</span></button>
-      <button class="mbtn"    data-model="behave"   style="padding:8px 4px;font-size:10px">🔬 Behave<br><span style="font-size:8px;opacity:.7">Inspector</span></button>
-      <button class="mbtn"    data-model="cell2fire" style="padding:8px 4px;font-size:10px">🎲 Cell2Fire<br><span style="font-size:8px;opacity:.7">100× MC</span></button>
-      <button class="mbtn"    data-model="elmfire"  style="padding:8px 4px;font-size:10px">〰 ELMFIRE<br><span style="font-size:8px;opacity:.7">Level-Set</span></button>
-      <button class="mbtn"    data-model="farsite"  style="padding:8px 4px;font-size:10px">⏱ FARSITE<br><span style="font-size:8px;opacity:.7">Lite</span></button>
-      <button class="mbtn"    data-model="euler4d" style="padding:8px 4px;font-size:10px;border:1px solid rgba(144,202,249,.4)">🌊 Euler 4D<br><span style="font-size:8px;opacity:.7">Navier-Stokes</span></button>
+    <!-- Model group: Research -->
+    <div class="model-group-label">🔬 Research</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+      <button class="mbtn research" data-model="flammap"  style="padding:8px 4px;font-size:10px">🗺 FlamMap<br><span style="font-size:8px;opacity:.7">Static hazard</span></button>
+      <button class="mbtn research" data-model="behave"   style="padding:8px 4px;font-size:10px">🔬 Behave<br><span style="font-size:8px;opacity:.7">Point inspector</span></button>
+      <button class="mbtn research" data-model="elmfire"  style="padding:8px 4px;font-size:10px">〰 ELMFIRE<br><span style="font-size:8px;opacity:.7">Level-set</span></button>
+      <button class="mbtn research" data-model="farsite"  style="padding:8px 4px;font-size:10px">⏱ FARSITE<br><span style="font-size:8px;opacity:.7">Arrival time</span></button>
     </div>
-    <div id="model-desc" style="font-size:10.5px;color:var(--f3);margin-bottom:12px;padding:8px;background:var(--s2);border-radius:8px;line-height:1.5">
+    <!-- Model group: Experimental -->
+    <div class="model-group-label">⚗ Experimental</div>
+    <div style="margin-bottom:6px">
+      <button class="mbtn experimental" data-model="euler4d" style="padding:8px 4px;font-size:10px;width:100%">🌊 Euler 4D — Navier-Stokes<br><span style="font-size:8px;opacity:.7">Fetches USGS DEM + LANDFIRE · may be slow</span></button>
+    </div>
+    <div id="model-desc" style="font-size:10.5px;color:var(--f3);margin-bottom:10px;padding:8px;background:var(--s2);border-radius:8px;line-height:1.5">
       ⚡ <b>Fast Tactical:</b> Huygens ellipse + Van Wagner crown + Rothermel ROS. Instant browser simulation.
     </div>
-    <div class="mbar" style="display:none">
-      <button class="mbtn on" id="mb-single">🔥 Single run</button>
-      <button class="mbtn" id="mb-prob">📊 Probability (15×)</button>
+
+    <!-- Primary action -->
+    <button class="run-btn" id="run-btn" disabled>🔥 Run Projection</button>
+    <div style="font-size:9.5px;color:var(--f4);text-align:center;margin-bottom:10px">
+      Click map to place ignition point, then Run
     </div>
-    <div class="wcard" id="wcard" style="display:none">
-      <div class="wchd"><span class="wct">🌩 NWS CONDITIONS</span><span class="wcb" id="wcard-src">—</span></div>
-      <div class="wgrid">
-        <div class="wv"><div class="wl">WIND SPD</div><div class="wn" id="ww-s">—</div><div class="wu">mph NWS</div></div>
-        <div class="wv"><div class="wl">WIND DIR</div><div class="wn" id="ww-d">—</div><div class="wu">from</div></div>
-        <div class="wv"><div class="wl">TEMP</div><div class="wn" id="ww-t">—</div><div class="wu">°F</div></div>
-        <div class="wv"><div class="wl">HUMIDITY</div><div class="wn" id="ww-h">—</div><div class="wu">%</div></div>
+
+    <!-- Wind / moisture sliders -->
+    <div class="sh collapsible-hd" id="cond-hd" onclick="toggleSection('cond-body','cond-hd')">
+      Conditions <span class="cc">▼</span>
+    </div>
+    <div id="cond-body">
+      <div class="nws" id="nws-card" style="display:none"></div>
+      <div class="wrow"><label>Wind</label>
+        <input type="range" id="wsp" min="0" max="60" value="15" oninput="S.windSpd=+this.value;$('wread').textContent=this.value+' mph @ '+S.windDeg+'°';rerun()">
+        <span id="wread" style="font-size:10px;font-family:'DM Mono',monospace">15 mph</span>
       </div>
-    </div>
-    <div class="sh">Wind</div>
-    <div class="slrow">
-      <div class="slhd"><span>💨 Direction (from)</span><span class="slv" id="wdv">225°</span></div>
-      <div class="track"><div class="tfill" id="wdf" style="background:#90CAF9"></div><div class="tthumb" id="wdt" style="background:#90CAF9;box-shadow:0 0 6px #90CAF966"></div><input type="range" id="sl-wd" min="0" max="360" value="225"></div>
-    </div>
-    <div class="slrow">
-      <div class="slhd"><span>🌪 Speed</span><span class="slv" id="wsv">15 mph</span></div>
-      <div class="track"><div class="tfill" id="wsf" style="background:#90CAF9"></div><div class="tthumb" id="wst" style="background:#90CAF9;box-shadow:0 0 6px #90CAF966"></div><input type="range" id="sl-ws" min="0" max="60" value="15"></div>
-    </div>
-    <div class="sh">Fuel</div>
-    <div class="slrow">
-      <div class="slhd"><span>💧 Moisture</span><span class="slv" id="mov">10%</span></div>
-      <div class="track"><div class="tfill" id="mof" style="background:#80DEEA"></div><div class="tthumb" id="mot" style="background:#80DEEA;box-shadow:0 0 6px #80DEEA66"></div><input type="range" id="sl-mo" min="0" max="50" value="10"></div>
-    </div>
-    <div class="sh">Ignition Points</div>
-    <div id="ignlist" class="ignlist"></div>
-    <div style="font-size:11px;color:var(--f3);margin-bottom:14px">Each map click adds an ignition point. Click item × to remove.</div>
-    <div class="sh">Draw Ignition</div>
-    <div style="display:flex;gap:6px;margin-bottom:14px">
-      <button class="sbtn" id="draw-line-btn" style="flex:1;font-size:11px" title="Draw a fire line (polyline)">✏ Fire Line</button>
-      <button class="sbtn" id="draw-poly-btn" style="flex:1;font-size:11px;background:var(--s3)" title="Draw a burn polygon">▭ Polygon</button>
-      <button class="sbtn" id="draw-clear-btn" style="flex:1;font-size:11px;background:var(--err)" title="Clear drawn shapes">✕ Clear</button>
-    </div>
-    <div class="sh">Search Active Fires</div>
-    <div class="srow2"><input class="sinp" id="sinp" placeholder="Fire name (PARK, FLAT…)"><button class="sbtn" id="sbtn">→</button></div>
-    <div class="abox">
-      <div class="at">⚡ ALGORITHM</div>
-      <div class="ab">Huygens ellipse wavefront<br>Van Wagner crown fire (2.8×)<br>Rothermel slope+wind align<br>FWI non-linear moisture<br>Terrain wind channeling<br>Trajectory ember transport<br>Crown cascade @ >25 mph<br>Δt=5 min · 72 steps (6h)<br>Ensemble: 15 RNG seeds</div>
+      <div class="wrow"><label>Wind dir</label>
+        <canvas id="cmp" width="38" height="38" style="cursor:pointer;flex-shrink:0"></canvas>
+        <span id="wdread" style="font-size:10px;font-family:'DM Mono',monospace">225°</span>
+      </div>
+      <div class="wrow"><label>Fuel moisture</label>
+        <input type="range" id="msp" min="0" max="30" value="10" oninput="S.moist=+this.value/100;$('mread').textContent=this.value+'%';rerun()">
+        <span id="mread" style="font-size:10px;font-family:'DM Mono',monospace">10%</span>
+      </div>
     </div>
   </div>
 
-  <!-- OPS -->
-  <div class="tc" id="t-ops">
+  <!-- WEATHER sub-panel -->
+  <div id="rst-weather" style="display:none">
+    <div class="nws" id="nws-card2"></div>
+    <div id="fire-weather-detail" style="font-size:11px;color:var(--f3);padding:8px;background:var(--s2);border-radius:8px">
+      <div id="fw-wind">Wind: —</div>
+      <div id="fw-rh">RH: —</div>
+      <div id="fw-vpd">VPD: —</div>
+      <div id="fw-haines">Haines: —</div>
+      <div id="fw-redflag"></div>
+    </div>
+    <div class="sh" style="margin-top:10px">Diurnal Wind Pattern</div>
+    <div class="wrow" style="margin-bottom:6px">
+      <label>Diurnal</label>
+      <div class="tog" id="diurnal-tog" style="cursor:pointer"><div class="kn"></div></div>
+    </div>
+    <div id="diurnal-tog-row" style="cursor:pointer">
+      <div class="tog" id="diurnal-tog2" style="display:none"><div class="kn"></div></div>
+    </div>
+  </div>
+
+  <!-- IGNITION sub-panel -->
+  <div id="rst-ignition" style="display:none">
+    <div class="hint" style="margin-bottom:8px">
+      <span class="ic">👆</span>
+      <div>Click the map to add ignition points. Search for a named fire to auto-project from NIFC perimeter.</div>
+    </div>
+    <!-- Fire search -->
+    <div class="sh">Find Active Fire</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <input id="sinp" type="text" placeholder="Fire name…" style="flex:1;padding:7px 9px;background:var(--s2);border:1px solid var(--s3);border-radius:8px;color:var(--fg);font-size:11px" aria-label="Fire name search">
+      <button id="sbtn" class="cb" style="padding:7px 12px" aria-label="Search fire">🔍</button>
+    </div>
+    <!-- Ignition list -->
+    <div class="sh">Active Ignitions</div>
+    <div id="ign-list" style="font-size:11px;color:var(--f3);margin-bottom:8px">None placed</div>
+    <!-- Draw tools -->
+    <div class="sh">Draw Tools</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="cb" id="draw-line-btn" aria-label="Draw fire line">🔥 Fire line</button>
+      <button class="cb" id="draw-poly-btn" aria-label="Draw polygon">▭ Polygon</button>
+      <button class="cb" id="clear-btn" aria-label="Clear projection">🧹 Clear</button>
+    </div>
+  </div>
+
+  <!-- ADVANCED sub-panel (merged Ops) -->
+  <div id="rst-advanced" style="display:none">
+    <!-- NFDRS Fire Danger -->
+    <div class="sh" style="margin-top:0">NFDRS Fire Danger</div>
+    <div id="fdr-card" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:10px"></div>
+    <!-- Containment -->
+    <div class="sh">Containment Lines</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <button class="cb" id="cont-btn" aria-label="Draw containment line">🚜 Draw containment</button>
+      <button class="cb" id="cont-clear-btn" aria-label="Clear containment">Clear</button>
+    </div>
+    <!-- Scenario -->
+    <div class="sh">Scenario A/B</div>
+    <div style="display:flex;gap:4px;margin-bottom:8px">
+      <button class="cb" id="scen-save" disabled aria-label="Save scenario A">💾 Save A</button>
+      <button class="cb" id="scen-show" disabled aria-label="Show scenario A">📐 Show A</button>
+    </div>
+    <!-- Suppression resources -->
+    <div class="sh">Suppression Resources</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="sbtn" id="supp-add" style="flex:1;font-size:10.5px;background:var(--s3)" aria-label="Add resource">+ Add Resource</button>
+      <button class="sbtn" id="supp-clear" style="flex:1;font-size:10.5px;background:var(--err)" aria-label="Clear resources">Clear All</button>
+    </div>
+    <div id="supp-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;font-size:11px;color:var(--f3)">No resources placed.</div>
+    <!-- Evacuation -->
+    <div class="sh">Evacuation Zones</div>
+    <button class="sbtn" id="evac-btn" style="width:100%;font-size:11px;margin-bottom:6px;background:var(--s3)" disabled aria-label="Generate evacuation zones">🚨 Generate Evacuation Zones</button>
+    <div id="evac-status" style="font-size:10.5px;color:var(--f3);margin-bottom:10px">Run projection first</div>
+    <!-- Alert -->
+    <div class="sh">Alert Threshold</div>
+    <div class="wrow" style="margin-bottom:8px">
+      <label>Alert at</label>
+      <input type="range" id="alert-thr" min="10" max="90" value="50" oninput="S.alertPct=+this.value;$('alert-lbl').textContent=this.value+'%'">
+      <span id="alert-lbl" style="font-size:10px;font-family:'DM Mono',monospace">50%</span>
+    </div>
+    <div class="wrow" style="margin-bottom:10px">
+      <label>Audio alerts</label>
+      <div class="tog" id="audio-tog"><div class="kn"></div></div>
+    </div>
+    <!-- Ops report -->
+    <button class="ebtn" id="e-report" disabled aria-label="Generate operational report">📋 Generate Ops Report</button>
+  </div>
+</div>
+
+<div class="tc" id="t-ops" style="display:none!important">
     <div class="sh" style="margin-top:0">Fire Danger Rating</div>
     <div id="fdr-card" style="background:var(--s2);border:1px solid var(--s3);border-radius:12px;padding:12px;margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -410,7 +590,7 @@ button{font-family:inherit;cursor:pointer}
   </div>
 
   <!-- DATA -->
-  <div class="tc" id="t-data">
+  <div class="tc" id="t-data" style="display:none">
     <div class="sh">National Status</div>
     <div class="scard"><div class="slbl">Active US Wildfires</div><div class="sval" id="ds-f">—</div><div class="ssub">NIFC WFIGS</div></div>
     <div class="scard"><div class="slbl">Total Acreage</div><div class="sval" id="ds-a">—</div><div class="ssub">Sum of reported sizes</div></div>
@@ -445,7 +625,16 @@ button{font-family:inherit;cursor:pointer}
 
   <!-- EXPORT -->
   <div class="tc" id="t-expo">
-    <div class="sh">Export</div>
+    <div class="sh">Export <span style="font-size:9px;color:var(--f4);font-weight:400">— includes model metadata + disclaimer</span></div>
+    <div id="export-meta-preview" style="padding:8px;background:var(--s2);border-radius:8px;font-size:9.5px;color:var(--f3);margin-bottom:10px;line-height:1.6;display:none">
+      <div style="font-weight:700;margin-bottom:4px">Export includes:</div>
+      <div>✓ Model ID + input parameters</div>
+      <div>✓ Confidence score + reasons</div>
+      <div>✓ Source timestamps + status</div>
+      <div>✓ Ignition points + perimeters</div>
+      <div>✓ Assumptions + warnings</div>
+      <div>✓ Research disclaimer</div>
+    </div>
     <button class="ebtn" id="e-gj" disabled>📄 GeoJSON fire perimeter</button>
     <button class="ebtn" id="e-csv" disabled>📊 CSV timestep data</button>
     <button class="ebtn" id="e-kml" disabled>📌 KML / Google Earth</button>
@@ -459,17 +648,70 @@ button{font-family:inherit;cursor:pointer}
     </div>
   </div>
   <!-- RISK INTELLIGENCE TAB -->
-  <div class="tc" id="t-risk">
-    <div class="sh" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
-      🧠 Risk Intelligence
-      <button onclick="refreshIntelligence()" style="font-size:9.5px;padding:3px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--f2);cursor:pointer">↺ Refresh</button>
+  <div class="tc" id="t-risk" role="tabpanel">
+  <div class="sheet-handle" aria-hidden="true"></div>
+  <div class="stabs" id="analyze-stabs">
+    <button class="stab on" data-ast="risk">🧠 Risk</button>
+    <button class="stab" data-ast="evidence">🔬 Evidence</button>
+    <button class="stab" data-ast="memory">🧬 Memory</button>
+    <button class="stab" data-ast="assumptions">⚠ Assumptions</button>
+  </div>
+
+  <!-- Risk sub-panel -->
+  <div id="ast-risk">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div id="conf-summary" style="font-size:11px;color:var(--f3)">Run projection to load intelligence.</div>
+      <button onclick="refreshIntelligence()" style="font-size:9.5px;padding:3px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--f2);cursor:pointer" aria-label="Refresh intelligence">↺</button>
     </div>
     <div id="risk-panel" style="font-size:11px;color:var(--f3)">
       <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to load intelligence.</div>
     </div>
   </div>
-  <!-- WORLD TAB -->
-  <div class="tc" id="t-world">
+
+  <!-- Evidence sub-panel -->
+  <div id="ast-evidence" style="display:none">
+    <div id="evidence-panel" style="font-size:11px;color:var(--f3)">
+      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to see evidence.</div>
+    </div>
+  </div>
+
+  <!-- Memory sub-panel -->
+  <div id="ast-memory" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:10px;color:var(--f4)">Holographic analog search</div>
+      <button onclick="updateMemoryPanel()" style="font-size:9.5px;padding:3px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--f2);cursor:pointer" aria-label="Query memory">↺ Query</button>
+    </div>
+    <div id="memory-panel" style="font-size:11px;color:var(--f3)">
+      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to query memory.</div>
+    </div>
+  </div>
+
+  <!-- Assumptions sub-panel -->
+  <div id="ast-assumptions" style="display:none">
+    <div class="sh" style="margin-top:0">Model Assumptions</div>
+    <div id="assumptions-panel" style="padding:10px;background:var(--s2);border-radius:9px;font-size:10.5px;color:var(--f3);line-height:1.8;margin-bottom:10px">
+      <div>• Fuel model estimated from coarse landcover</div>
+      <div>• Wind from NWS forecast grid (or manual slider)</div>
+      <div>• Drought multiplier from USDM weekly polygon</div>
+      <div>• Terrain simplified (procedural noise unless USGS DEM loaded)</div>
+      <div>• Suppression only represented by drawn containment lines</div>
+      <div>• Traditional/cultural fire context requires explicit permission</div>
+      <div>• Perimeter data from NIFC/WFIGS — may lag fire progression</div>
+      <div>• IR hotspots from NASA FIRMS (~3h latency, cloud cover limits)</div>
+    </div>
+    <div class="sh">Source Health</div>
+    <div id="source-health-detail"></div>
+    <div class="sh" style="margin-top:10px">Runtime Warnings</div>
+    <div id="warnings-panel" style="font-size:10.5px;color:var(--wrn,#FFC107)">
+      No warnings.
+    </div>
+    <div style="margin-top:12px;padding:8px;background:var(--s2);border-radius:8px;font-size:9.5px;color:var(--f4);line-height:1.5;border-left:3px solid var(--err,#F44336)">
+      ⚠ Research / planning aid only. Not a certified operational fire prediction system. Verify with FARSITE, FlamMap, or certified FBAN tools for life-safety decisions.
+    </div>
+  </div>
+</div>
+
+<div class="tc" id="t-world">
     <div class="sh" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
       🌍 World Mode
       <select id="region-sel" onchange="ACTIVE_REGION=this.value;ACTIVE_BIOME='auto';updateWorldPanel();if(S.sim)rerun();" style="font-size:9.5px;padding:3px 6px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--fg)">
@@ -502,28 +744,24 @@ button{font-family:inherit;cursor:pointer}
     </div>
   </div>
 
-  <!-- MEMORY TAB -->
-  <div class="tc" id="t-mem">
-    <div class="sh" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
-      🧬 Holographic Memory
-      <button onclick="updateMemoryPanel()" style="font-size:9.5px;padding:3px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--f2);cursor:pointer">↺ Query</button>
-    </div>
-    <div id="memory-panel" style="font-size:11px;color:var(--f3)">
-      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to query memory.</div>
-    </div>
-  </div>
-
-  <!-- EVIDENCE TAB -->
-  <div class="tc" id="t-evid">
-    <div class="sh" style="margin-top:0">🔬 Evidence</div>
-    <div id="evidence-panel" style="font-size:11px;color:var(--f3)">
-      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to see evidence.</div>
-    </div>
-  </div>
+<!-- mem tab merged into Analyze -->
+<!-- evid tab merged into Analyze -->
 </aside>
 
-<main id="map"></main>
-<canvas id="ov"></canvas>
+<main id="map" role="main" aria-label="Fire spread map"></main>
+<canvas id="ov" aria-hidden="true"></canvas>
+
+<!-- Mode badge -->
+<div id="mode-badge" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Floating map tool rail -->
+<div class="map-tools" role="toolbar" aria-label="Map tools">
+  <button data-tool="add_ignition" class="on" title="Add ignition point" aria-label="Add ignition point" aria-pressed="true">＋</button>
+  <button data-tool="draw_line"    title="Draw fire line"      aria-label="Draw fire line"      aria-pressed="false">〰</button>
+  <button data-tool="containment"  title="Draw containment"    aria-label="Draw containment"    aria-pressed="false">🚜</button>
+  <button data-tool="behave_click" title="Behave inspector"    aria-label="Behave inspector"    aria-pressed="false">🔬</button>
+  <button data-tool="clear_all"    title="Clear projection"    aria-label="Clear projection"    aria-pressed="false">🧹</button>
+</div>
 
 <!-- Overlays on map -->
 <div class="mcrd" id="tbadge" style="top:14px;left:14px;padding:8px 16px;display:none;background:linear-gradient(135deg,rgba(230,81,0,.92),rgba(255,109,0,.85))">
@@ -897,6 +1135,7 @@ function afterProject(){
   ['wind-ov','tbadge','zstats'].forEach(id=>$(id).style.display='flex');
   $('wind-ov').style.display='flex';$('zstats').style.display='block';
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
+  updateRunBtn();showExportPreview();
   ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
   if(S.sim?.bounds&&S.sim?.center){
@@ -1073,7 +1312,15 @@ function initMap(){
 // ── UI bindings ────────────────────────
 function bindUI(){
   $('menu-btn').addEventListener('click',()=>{$('side').classList.toggle('col');setTimeout(()=>{S.map?.invalidateSize();draw();},300);});
-  document.querySelectorAll('.tab').forEach(tab=>{tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));tab.classList.add('on');$(`t-${tab.dataset.t}`).classList.add('on');});});
+  document.querySelectorAll('.tab').forEach(tab=>{tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('on');t.setAttribute('aria-selected','false');});
+    document.querySelectorAll('.tc').forEach(t=>t.classList.remove('on'));
+    tab.classList.add('on'); tab.setAttribute('aria-selected','true');
+    const tcEl=$(`t-${tab.dataset.t}`); if(tcEl) tcEl.classList.add('on');
+    // Handle merged tabs: risk tab hosts Analyze mode
+    if(tab.dataset.t==='risk') setModeBadge('📊 Analyze',2000);
+    else if(tab.dataset.t==='proj') setModeBadge('🔥 Run Mode',2000);
+  });});
   $('mb-single').addEventListener('click',()=>{S.mode='single';S.probGrid=null;$('mb-single').classList.add('on');$('mb-prob').classList.remove('on','prob');$('prob-leg').style.display='none';chip('c-mode','📊 Single run','dim');if(S.sim)rerun();});
   $('mb-prob').addEventListener('click',()=>{S.mode='prob';$('mb-prob').classList.add('on','prob');$('mb-single').classList.remove('on');$('prob-leg').style.display='block';chip('c-mode','📊 Ensemble ×15','inf');if(S.sim)rerun();});
   bindSlider('sl-wd','wdf','wdt','wdv',v=>`${v}°`,v=>{S.windDeg=v;drawCompass(v);if(S.sim)rerun();});
@@ -1795,6 +2042,7 @@ async function autoProject(lat,lng,name,acres){
   S.step=0;enableTL();updateURL();
   ['wind-ov','tbadge','zstats'].forEach(id=>{const e=$(id);if(e)e.style.display=id==='zstats'?'block':'flex';});
   if(S.showGchart){$('gchart').style.display='block';buildGChart();}
+  updateRunBtn();showExportPreview();
   ['scen-save','e-report','risk-btn','struct-btn','e-kml','evac-btn'].forEach(id=>{const e=$(id);if(e)e.disabled=false;});
   if(typeof computeFDR==='function') setTimeout(computeFDR,200);
   if(S.sim?.bounds&&S.sim?.center){
@@ -2409,6 +2657,100 @@ function generateReport(){
   td,th{padding:8px 12px;text-align:left;border-bottom:1px solid #eee;font-size:12px}
   th{background:#F5F5F5;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#78909C}
   .footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;font-size:10px;color:#B0BEC5}
+
+/* ── Refactor shell additions ──────────────────────────────────── */
+
+/* Primary run button */
+.run-btn{width:100%;padding:11px 14px;border:0;border-radius:12px;
+  background:linear-gradient(135deg,var(--pri),var(--pd,#E65100));color:#fff;
+  font-weight:800;font-size:14px;letter-spacing:.3px;cursor:pointer;
+  box-shadow:0 6px 20px rgba(255,109,0,.3);transition:all .2s;margin-bottom:10px}
+.run-btn:hover{box-shadow:0 8px 28px rgba(255,109,0,.45);transform:translateY(-1px)}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none}
+
+/* Mode badge over map */
+#mode-badge{position:fixed;top:64px;left:50%;transform:translateX(-50%);
+  z-index:700;background:rgba(9,20,33,.88);border:1px solid var(--s3);
+  border-radius:20px;padding:5px 14px;font-size:11px;font-weight:700;
+  color:var(--f2);backdrop-filter:blur(10px);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+#mode-badge.show{opacity:1}
+
+/* Floating map tool rail */
+.map-tools{position:fixed;right:14px;top:68px;z-index:650;
+  display:flex;flex-direction:column;gap:5px;padding:6px;
+  border:1px solid var(--s2);border-radius:14px;
+  background:rgba(9,20,33,.88);backdrop-filter:blur(10px)}
+.map-tools button{width:38px;height:38px;border:1px solid var(--s3);
+  border-radius:10px;background:var(--s2);color:var(--fg);font-size:16px;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.map-tools button:hover{background:var(--s3)}
+.map-tools button.on{background:var(--pri);border-color:var(--pb,#FF8F00);color:#fff}
+.map-tools button:focus-visible{outline:2px solid var(--pb,#FF8F00);outline-offset:2px}
+
+/* Mode sub-tab strip inside panel */
+.stabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
+.stab{padding:5px 10px;border-radius:8px;border:1px solid var(--s3);
+  background:transparent;color:var(--f3);font-size:10.5px;font-weight:700;
+  cursor:pointer;transition:all .15s}
+.stab.on{background:var(--s2);color:var(--fg);border-color:var(--s2)}
+.stab:hover:not(.on){background:var(--s2)}
+
+/* Model group labels */
+.model-group-label{font-size:8.5px;color:var(--f4);letter-spacing:1px;
+  text-transform:uppercase;padding:6px 0 3px;font-family:'DM Mono',monospace}
+.mbtn.experimental{opacity:.65;border-style:dashed}
+.mbtn.research{border-color:var(--inf,#42A5F5)22}
+
+/* Source health row */
+.src-row{display:flex;align-items:center;gap:8px;padding:6px 0;
+  border-bottom:1px solid var(--s2);font-size:10.5px}
+.src-row .sl{flex:1}
+.src-row .sa{font-size:9.5px;color:var(--f4);font-family:'DM Mono',monospace}
+
+/* Mobile bottom sheet */
+@media(max-width:720px){
+  .side{top:auto!important;left:0!important;right:0;bottom:76px;width:100%!important;
+    height:60vh;border-right:0;border-top:1px solid var(--s2);
+    border-radius:18px 18px 0 0;transform:translateY(calc(100% - 54px));
+    transition:transform .3s cubic-bezier(.4,0,.2,1)}
+  .side.open{transform:translateY(0)}
+  #map,#ov{left:0!important;bottom:76px}
+  .tl{left:0!important}
+  .chips{display:none}
+  .map-tools{top:68px;right:8px}
+  .sheet-handle{width:42px;height:4px;border-radius:999px;
+    background:var(--s3);margin:8px auto 6px;cursor:grab}
+}
+
+/* Focus states */
+button:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--pb,#FF8F00);outline-offset:2px}
+
+/* Reduced motion */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;
+    animation-iteration-count:1!important;transition-duration:.001ms!important}}
+
+/* Run/Analyze mode switcher in panel */
+.mode-pills{display:flex;gap:3px;margin-bottom:12px;background:var(--s2);
+  border-radius:10px;padding:3px}
+.mode-pill{flex:1;padding:6px 4px;border:0;border-radius:8px;
+  background:transparent;color:var(--f3);font-size:10px;font-weight:700;
+  cursor:pointer;transition:all .15s;text-align:center}
+.mode-pill.on{background:var(--surf,#09141F);color:var(--fg);
+  box-shadow:0 2px 8px rgba(0,0,0,.3)}
+
+/* Confidence chip styling */
+#c-confidence{cursor:pointer;transition:opacity .2s}
+#c-confidence:hover{opacity:.8}
+
+/* Collapsible section */
+.collapsible-hd{display:flex;justify-content:space-between;align-items:center;
+  cursor:pointer;user-select:none}
+.collapsible-hd .cc{font-size:11px;color:var(--f4);transition:transform .2s}
+.collapsible-hd.open .cc{transform:rotate(180deg)}
+
 </style></head><body>
 <h1>🔥 FireSim Live — Operational Report</h1>
 <table style="margin-bottom:0"><tr><td><b>Generated:</b> ${new Date().toLocaleString()}</td>
@@ -5449,6 +5791,250 @@ function trackSimStep(step){
   recordCorrelationPoint(step, wxCtx, frpProxy);
 }
 
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  REFACTOR SHELL — Mode system, sub-tabs, tool rail, run button, confidence
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Sub-tab system ─────────────────────────────────────────────────────────
+function initSubTabs(){
+  // Run mode sub-tabs
+  document.querySelectorAll('#run-stabs .stab').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('#run-stabs .stab').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      const st=btn.dataset.st;
+      ['setup','weather','ignition','advanced'].forEach(s=>{
+        const el=$(`rst-${s}`); if(el) el.style.display=s===st?'':'none';
+      });
+    });
+  });
+
+  // Analyze mode sub-tabs
+  document.querySelectorAll('#analyze-stabs .stab').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('#analyze-stabs .stab').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      const ast=btn.dataset.ast;
+      ['risk','evidence','memory','assumptions'].forEach(s=>{
+        const el=$(`ast-${s}`); if(el) el.style.display=s===ast?'':'none';
+      });
+      // Update panel on switch
+      if(ast==='memory'&&typeof updateMemoryPanel==='function') updateMemoryPanel();
+      if(ast==='evidence'&&typeof updateEvidencePanel==='function') updateEvidencePanel();
+      if(ast==='assumptions') updateAssumptionsPanel();
+    });
+  });
+}
+
+// ── Run button ─────────────────────────────────────────────────────────────
+function wireRunBtn(){
+  const btn=$('run-btn'); if(!btn) return;
+  btn.addEventListener('click',()=>{
+    if(S.ignitions.length===0){ toast('Click map to place an ignition point first','e'); return; }
+    // If we have ignitions but no sim yet, trigger projection from first ignition
+    if(!S.sim&&S.ignitions.length>0){
+      const p=S.ignitions[0];
+      setModeBadge('⏳ Running projection…');
+      project(p.lat,p.lng).finally(()=>setModeBadge('👁 Inspect Result',4000));
+    } else {
+      rerun();
+      setModeBadge('⏳ Rerunning…');
+      setTimeout(()=>setModeBadge('👁 Inspect Result',4000),500);
+    }
+  });
+}
+
+function updateRunBtn(){
+  const btn=$('run-btn'); if(!btn) return;
+  btn.disabled=S.ignitions.length===0;
+  btn.textContent=S.sim?'🔄 Rerun Projection':'🔥 Run Projection';
+}
+
+// ── Mode badge ─────────────────────────────────────────────────────────────
+let modeBadgeTimer=null;
+function setModeBadge(text, autoClearMs=0){
+  const el=$('mode-badge'); if(!el) return;
+  el.textContent=text;
+  el.classList.add('show');
+  clearTimeout(modeBadgeTimer);
+  if(autoClearMs>0) modeBadgeTimer=setTimeout(()=>el.classList.remove('show'),autoClearMs);
+}
+
+// ── Floating map tool rail ─────────────────────────────────────────────────
+let ACTIVE_MAP_TOOL='add_ignition';
+function wireToolRail(){
+  document.querySelectorAll('.map-tools [data-tool]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      ACTIVE_MAP_TOOL=btn.dataset.tool;
+      document.querySelectorAll('.map-tools [data-tool]').forEach(b=>{
+        b.classList.remove('on');
+        b.setAttribute('aria-pressed','false');
+      });
+      if(btn.dataset.tool!=='clear_all'){
+        btn.classList.add('on');
+        btn.setAttribute('aria-pressed','true');
+      }
+
+      const labels={
+        add_ignition:'+ Add Ignition',
+        draw_line:'〰 Draw Fire Line',
+        containment:'🚜 Draw Containment',
+        behave_click:'🔬 Behave Inspector',
+        clear_all:'🧹 Cleared'
+      };
+      setModeBadge(labels[btn.dataset.tool]||btn.dataset.tool, 2500);
+
+      // Actions
+      if(btn.dataset.tool==='clear_all'){
+        clearProj();
+        ACTIVE_MAP_TOOL='add_ignition';
+        const addBtn=document.querySelector('.map-tools [data-tool="add_ignition"]');
+        if(addBtn){addBtn.classList.add('on');addBtn.setAttribute('aria-pressed','true');}
+      }
+      if(btn.dataset.tool==='containment') startContainmentDraw?.();
+      if(btn.dataset.tool==='behave_click'){
+        if(ACTIVE_MODEL!=='behave') document.querySelector('[data-model="behave"]')?.click();
+      }
+    });
+  });
+}
+
+// Override map click to respect ACTIVE_MAP_TOOL
+function handleMapClick(e){
+  if(e.originalEvent.target.closest('.leaflet-popup,.map-tools,.side')) return;
+  switch(ACTIVE_MAP_TOOL){
+    case 'add_ignition': return; // handled by existing onClick in initMap
+    case 'behave_click': return onBehaveClick?.(e);
+    default: return;
+  }
+}
+
+// ── Confidence chip updater ────────────────────────────────────────────────
+function updateConfidenceChip(){
+  const conf=typeof computeConfidence==='function'?computeConfidence():null;
+  if(!conf) return;
+  const cc=$('c-confidence');
+  if(cc){cc.textContent=`📊 ${conf.score}%`;cc.className=`chip ${conf.score>=65?'ok':conf.score>=40?'inf':'err'}`;}
+  // Source count
+  const srcOkCount=Object.values(SOURCES||{}).filter(s=>s.status==='ok').length;
+  const srcTotal=Object.keys(SOURCES||{}).length;
+  const sc=$('c-sources');
+  if(sc){sc.textContent=`📡 ${srcOkCount}/${srcTotal}`;
+    sc.className=`chip ${srcOkCount>=4?'ok':srcOkCount>=2?'inf':'err'}`;}
+}
+
+// ── Assumptions panel ─────────────────────────────────────────────────────
+function updateAssumptionsPanel(){
+  const el=$('source-health-detail'); if(!el) return;
+  const rows=Object.entries(SOURCES||{}).map(([k,s])=>{
+    const age=s.updatedAt?Math.round((Date.now()-s.updatedAt.getTime())/60000):null;
+    const ageStr=age!=null?`${age}min ago`:'—';
+    const statusColor=s.status==='ok'?'var(--ok)':s.status==='err'?'var(--err)':'var(--f4)';
+    return`<div class="src-row">
+      <div class="sl"><b>${s.label}</b><br><span style="color:var(--f4);font-size:9.5px">${k}</span></div>
+      <div style="color:${statusColor};font-size:10px;font-weight:700">${s.status.toUpperCase()}</div>
+      <div class="sa">${ageStr}</div>
+    </div>`;
+  });
+  el.innerHTML=rows.join('');
+  // Warnings
+  const wp=$('warnings-panel'); if(!wp) return;
+  const conf=typeof computeConfidence==='function'?computeConfidence():null;
+  if(conf?.reasons?.length){
+    wp.innerHTML=conf.reasons.map(r=>`<div style="padding:2px 0">⚠ ${r}</div>`).join('');
+  }
+}
+
+// ── Collapsible sections ───────────────────────────────────────────────────
+function toggleSection(bodyId, hdId){
+  const body=$(bodyId), hd=$(hdId);
+  if(!body||!hd) return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'';
+  hd.classList.toggle('open',!open);
+}
+
+// ── Export preview ─────────────────────────────────────────────────────────
+function showExportPreview(){
+  const el=$('export-meta-preview'); if(!el) return;
+  el.style.display=S.sim?'block':'none';
+}
+
+// ── Mobile bottom sheet touch ─────────────────────────────────────────────
+function initMobileSheet(){
+  const side=$('side')||document.querySelector('.side');
+  const handle=document.querySelector('.sheet-handle');
+  if(!side||!handle) return;
+  let startY=0, dragging=false;
+  handle.addEventListener('touchstart',e=>{startY=e.touches[0].clientY;dragging=true;},{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!dragging) return;
+    const dy=e.touches[0].clientY-startY;
+    if(dy<-30) side.classList.add('open');
+    if(dy>30)  side.classList.remove('open');
+  },{passive:true});
+  document.addEventListener('touchend',()=>{dragging=false;});
+  // Menu button toggles mobile sheet
+  $('menu-btn')?.addEventListener('click',()=>{
+    if(window.innerWidth<=720) side.classList.toggle('open');
+    else side.classList.toggle('collapsed');
+  });
+}
+
+// ── Diurnal toggle (moved to weather sub-panel) ───────────────────────────
+function wireDiurnalToggle(){
+  const tog=$('diurnal-tog'); if(!tog) return;
+  tog.addEventListener('click',()=>{
+    tog.classList.toggle('on');
+    S.diurnalOn=tog.classList.contains('on');
+  });
+}
+
+// ── Update afterProject hook ───────────────────────────────────────────────
+const _origAfterProject=typeof afterProject==='function'?afterProject:null;
+
+// Patch main function hooks
+function patchShell(){
+  // Run button stays updated whenever ignitions change
+  const origRenderIgnList=typeof renderIgnList==='function'?renderIgnList:null;
+  if(origRenderIgnList){
+    window.renderIgnList=function(){origRenderIgnList();updateRunBtn();};
+  }
+
+  // Update confidence chip whenever risk panel updates
+  const origUpdateRisk=typeof updateRiskPanel==='function'?updateRiskPanel:null;
+  if(origUpdateRisk){
+    window.updateRiskPanel=function(){
+      origUpdateRisk();
+      updateConfidenceChip();
+      showExportPreview();
+      // Mirror confidence to run mode summary
+      const cs=$('conf-summary');
+      const conf=typeof computeConfidence==='function'?computeConfidence():null;
+      if(cs&&conf) cs.innerHTML=`Confidence: <b style="color:${conf.color}">${conf.score}% ${conf.label}</b>`;
+    };
+  }
+
+  // Update weather sub-panel from wxCtx
+  const origFetchWx=typeof fetchFireWeather==='function'?fetchFireWeather:null;
+  if(origFetchWx){
+    const _orig=origFetchWx;
+    window.fetchFireWeather=async function(lat,lng){
+      const r=await _orig(lat,lng);
+      if(wxCtx){
+        const fw=$('fw-wind'); if(fw) fw.textContent=`Wind: ${Math.round(S.windSpd)} mph @ ${S.windDeg}°${wxCtx.gustKmh?` (gust ${Math.round(wxCtx.gustKmh*.621)} mph)`:''}`;
+        const fr=$('fw-rh'); if(fr) fr.textContent=`RH: ${wxCtx.rhPct!=null?Math.round(wxCtx.rhPct)+'%':'—'}`;
+        const fv=$('fw-vpd'); if(fv) fv.textContent=`VPD: ${wxCtx.vpd!=null?wxCtx.vpd.toFixed(2)+' kPa':'—'}`;
+        const fh=$('fw-haines'); if(fh) fh.textContent=`Haines: ${wxCtx.hainesRaw!=null?wxCtx.hainesRaw+' ('+hainesLabel(wxCtx.hainesRaw)+')':'—'}`;
+        const rf=$('fw-redflag');
+        if(rf) rf.innerHTML=redFlagActive?'<span style="color:var(--err);font-weight:700">⚠ RED FLAG ACTIVE</span>':'';
+      }
+      return r;
+    };
+  }
+}
 
 window.addEventListener('load',()=>{boot('Binding UI…');bindUI();bindModelSelector();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
 window.addEventListener('resize',()=>{S.map?.invalidateSize();sizeOv();draw();});
