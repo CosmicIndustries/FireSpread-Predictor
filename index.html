@@ -237,6 +237,9 @@ button{font-family:inherit;cursor:pointer}
     <button class="tab" data-t="data">📊 Data</button>
     <button class="tab" data-t="expo">⬇ Export</button>
   <button class="tab" data-t="risk">🧠 Risk</button>
+  <button class="tab" data-t="world">🌍 World</button>
+  <button class="tab" data-t="mem">🧬 Memory</button>
+  <button class="tab" data-t="evid">🔬 Evidence</button>
   </div>
 
   <!-- PROJECT -->
@@ -463,6 +466,58 @@ button{font-family:inherit;cursor:pointer}
     </div>
     <div id="risk-panel" style="font-size:11px;color:var(--f3)">
       <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to load intelligence.</div>
+    </div>
+  </div>
+  <!-- WORLD TAB -->
+  <div class="tc" id="t-world">
+    <div class="sh" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
+      🌍 World Mode
+      <select id="region-sel" onchange="ACTIVE_REGION=this.value;ACTIVE_BIOME='auto';updateWorldPanel();if(S.sim)rerun();" style="font-size:9.5px;padding:3px 6px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--fg)">
+        <option value="usa">🇺🇸 USA</option>
+        <option value="canada">🇨🇦 Canada</option>
+        <option value="australia">🇦🇺 Australia</option>
+        <option value="mediterranean">🇪🇺 Mediterranean</option>
+        <option value="amazon">🇧🇷 Amazon</option>
+        <option value="boreal">🌲 Boreal</option>
+        <option value="africa_savanna">🌍 Africa Savanna</option>
+        <option value="southeast_asia">🌏 SE Asia</option>
+      </select>
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;color:var(--f4);margin-bottom:4px">Biome override</div>
+      <select id="biome-sel" onchange="ACTIVE_BIOME=this.value;updateWorldPanel();if(S.sim)rerun();" style="width:100%;padding:5px;background:var(--s2);border:1px solid var(--s3);border-radius:7px;color:var(--fg);font-size:10.5px">
+        <option value="auto">🔍 Auto-detect</option>
+        <option value="temperate_forest">🌲 Temperate Forest</option>
+        <option value="chaparral">🌵 Chaparral / Shrubland</option>
+        <option value="grassland_savanna">🌾 Grassland / Savanna</option>
+        <option value="eucalyptus_forest">🦘 Australian Eucalyptus</option>
+        <option value="boreal_forest">❄ Boreal / Taiga</option>
+        <option value="peatland">💧 Peatland / Muskeg</option>
+        <option value="tropical_forest">🌴 Tropical Forest Edge</option>
+        <option value="wui">🏘 Wildland-Urban Interface</option>
+      </select>
+    </div>
+    <div id="world-panel" style="font-size:11px;color:var(--f3)">
+      <div style="padding:20px 0;text-align:center;color:var(--f4)">Select a region above.</div>
+    </div>
+  </div>
+
+  <!-- MEMORY TAB -->
+  <div class="tc" id="t-mem">
+    <div class="sh" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">
+      🧬 Holographic Memory
+      <button onclick="updateMemoryPanel()" style="font-size:9.5px;padding:3px 8px;background:var(--s2);border:1px solid var(--s3);border-radius:6px;color:var(--f2);cursor:pointer">↺ Query</button>
+    </div>
+    <div id="memory-panel" style="font-size:11px;color:var(--f3)">
+      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to query memory.</div>
+    </div>
+  </div>
+
+  <!-- EVIDENCE TAB -->
+  <div class="tc" id="t-evid">
+    <div class="sh" style="margin-top:0">🔬 Evidence</div>
+    <div id="evidence-panel" style="font-size:11px;color:var(--f3)">
+      <div style="padding:20px 0;text-align:center;color:var(--f4)">Run a projection to see evidence.</div>
     </div>
   </div>
 </aside>
@@ -847,6 +902,9 @@ function afterProject(){
   if(S.sim?.bounds&&S.sim?.center){
     runIntelligenceLayer(S.sim.center.lat,S.sim.center.lng,S.sim.bounds).then(()=>{
       updateRiskPanel();updateSourcePanel();
+      if(typeof updateWorldPanel==='function') updateWorldPanel();
+      if(typeof updateMemoryPanel==='function') updateMemoryPanel();
+      if(typeof updateEvidencePanel==='function') updateEvidencePanel();
     });
   }
   // Update source dots for real data
@@ -1600,6 +1658,15 @@ async function autoProject(lat,lng,name,acres){
   // First fetch hotspots to determine zone size, then build everything at scale
   chip('c-zone','⏳ Fetching hotspots…','pulse dim');
   const roughBounds=mkBounds(lat,lng,80); // wide initial fetch
+  // Auto-detect region + biome from fire location
+  if(typeof detectRegion==='function'){
+    ACTIVE_REGION=detectRegion(lat,lng);
+    if(ACTIVE_BIOME==='auto'&&typeof autoDetectBiome==='function')
+      ACTIVE_BIOME='auto'; // keep auto so it re-computes
+    // Update region selector in World tab
+    const rSel=$('region-sel'); if(rSel) rSel.value=ACTIVE_REGION;
+    chip('c-mode',`${REGION_PROFILES[ACTIVE_REGION]?.flag||'🌍'} ${REGION_PROFILES[ACTIVE_REGION]?.label||ACTIVE_REGION}`,'inf');
+  }
 
   // Step 1: NWS wind + RAWS in parallel (don't wait on perimeters yet)
   chip('c-zone','⏳ Fetching weather…','pulse dim');
@@ -1733,6 +1800,9 @@ async function autoProject(lat,lng,name,acres){
   if(S.sim?.bounds&&S.sim?.center){
     runIntelligenceLayer(S.sim.center.lat,S.sim.center.lng,S.sim.bounds).then(()=>{
       updateRiskPanel();updateSourcePanel();
+      if(typeof updateWorldPanel==='function') updateWorldPanel();
+      if(typeof updateMemoryPanel==='function') updateMemoryPanel();
+      if(typeof updateEvidencePanel==='function') updateEvidencePanel();
     });
   }
   // Update source dots for real data
@@ -3779,7 +3849,11 @@ function runSimEuler(terrain, params){
           const df=(Math.abs(dx)+Math.abs(dy)===2)?0.707:1.0;
           const wm=1+1.2*Math.pow(Math.max(0,cellSpd_mph)/10,1.3);
           const intM=typeof getDroughtMult==='function'?Math.min(1.6,getDroughtMult()):1;
-          const prob=Math.min(0.97,TP[nb.type].ros*wm*ellF*sf*mf*df*crownMult*0.88*intM);
+          const biomeM=typeof getBiomeROSMult==='function'?Math.min(1.5,getBiomeROSMult()):1;
+          // Apply region-specific crown multiplier
+          const regionCrownM=typeof getBiomeCrownMult==='function'?getBiomeCrownMult():1;
+          const effectiveCrownMult=crownMult*regionCrownM;
+          const prob=Math.min(0.97,TP[nb.type].ros*wm*ellF*sf*mf*df*effectiveCrownMult*0.88*intM*biomeM);
           if(rng()<prob) ng[ny][nx]={...nb,fire:F.PRE,tick:0,crown:isCrown&&nb.type===T.FOREST};
         }
 
@@ -4625,6 +4699,757 @@ function refreshIntelligence(){
     updateRiskPanel();updateSourcePanel();toast('Intelligence refreshed','o');
   });
 }
+// ═══════════════════════════════════════════════════════════════════════════
+//  WORLD ENGINE v1.0 — Global Biome-Aware Fire Intelligence
+//  Region profiles · Biome modifiers · Canadian FWI · McArthur FFDI
+//  HRR holographic encoder · HRRR correlation · Evidence panel
+//  Global source registry · Memory/analog search
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Region Profiles ────────────────────────────────────────────────────────
+const REGION_PROFILES = {
+  usa: {
+    id:'usa', label:'United States', flag:'🇺🇸',
+    agencies:['NOAA/NWS','NIFC','USGS','NASA FIRMS'],
+    terms:{fire:'Wildfire',warning:'Red Flag Warning',fuel:'NFDRS',incident:'Wildfire',containment:'Containment line'},
+    models:['Rothermel','FARSITE','FlamMap','NFDRS'],
+    weatherSource:'nws',
+    fireSource:'nifc',
+    droughtSource:'usdm',
+  },
+  canada: {
+    id:'canada', label:'Canada', flag:'🇨🇦',
+    agencies:['Natural Resources Canada','CWFIS','provincial agencies'],
+    terms:{fire:'Wildland Fire',warning:'Extreme Fire Danger / FWI',fuel:'Canadian FWI',incident:'Wildland Fire',containment:'Control line'},
+    models:['Canadian FWI','Canadian FBP System'],
+    weatherSource:'cwfis',
+    fireSource:'cwfis',
+    droughtSource:'nadm',
+  },
+  australia: {
+    id:'australia', label:'Australia', flag:'🇦🇺',
+    agencies:['Bureau of Meteorology','AFDRS','State RFS/CFA'],
+    terms:{fire:'Bushfire',warning:'Fire Danger Warning',fuel:'AFDRS / FBI',incident:'Bushfire',containment:'Control line'},
+    models:['McArthur FFDI','McArthur GFDI','Vesta','AFDRS FBI'],
+    weatherSource:'bom',
+    fireSource:'afdrs',
+    droughtSource:'bom_drought',
+  },
+  mediterranean: {
+    id:'mediterranean', label:'Mediterranean / Europe', flag:'🇪🇺',
+    agencies:['EFFIS','Copernicus','national civil protection'],
+    terms:{fire:'Forest fire',warning:'Fire danger class',fuel:'FWI / EFFIS danger',incident:'Forest fire',containment:'Firebreak'},
+    models:['EFFIS FWI','Prometheus-variant','Rothermel'],
+    weatherSource:'effis_ecmwf',
+    fireSource:'effis',
+    droughtSource:'edo',
+  },
+  amazon: {
+    id:'amazon', label:'Amazon / Brazil', flag:'🇧🇷',
+    agencies:['INPE Queimadas','NASA FIRMS','IBAMA'],
+    terms:{fire:'Incêndio florestal',warning:'Risco de fogo',fuel:'Dry season anomaly',incident:'Foco de incêndio',containment:'Linha de contenção'},
+    models:['Edge ignition model','Drought-stress spread'],
+    weatherSource:'inpe',
+    fireSource:'inpe_queimadas',
+    droughtSource:'spei_global',
+  },
+  boreal: {
+    id:'boreal', label:'Boreal / Siberia', flag:'🌲',
+    agencies:['Copernicus','national forestry services'],
+    terms:{fire:'Taiga wildfire',warning:'Taiga fire danger',fuel:'FWI / drought code',incident:'Taiga wildfire',containment:'Fireline'},
+    models:['Boreal crown fire','Peat smolder','FWI-Canada variant'],
+    weatherSource:'era5_global',
+    fireSource:'firms_global',
+    droughtSource:'spei_global',
+  },
+  africa_savanna: {
+    id:'africa_savanna', label:'Africa / Savanna', flag:'🌍',
+    agencies:['Regional met services','NASA FIRMS','Copernicus'],
+    terms:{fire:'Bush fire / savanna burn',warning:'Savanna fire risk',fuel:'Grass curing / dry season',incident:'Savanna burn',containment:'Firebreak'},
+    models:['Savanna grass-fire spread','Seasonal burn calendar'],
+    weatherSource:'firms_global',
+    fireSource:'firms_global',
+    droughtSource:'spei_global',
+  },
+  southeast_asia: {
+    id:'southeast_asia', label:'SE Asia / Peatlands', flag:'🌏',
+    agencies:['BMKG','regional environment ministries','NASA FIRMS'],
+    terms:{fire:'Kebakaran hutan',warning:'Risiko kebakaran',fuel:'Peat dryness / water table',incident:'Kebakaran lahan',containment:'Sekat bakar'},
+    models:['Peat smolder model','Surface-subsurface fire'],
+    weatherSource:'era5_global',
+    fireSource:'firms_global',
+    droughtSource:'spei_global',
+  },
+};
+
+// Auto-detect region from lat/lng
+function detectRegion(lat, lng){
+  if(lat>24&&lat<50&&lng>-125&&lng<-66) return 'usa';
+  if(lat>49&&lat<84&&lng>-141&&lng<-52) return 'canada';
+  if(lat>-44&&lat<-10&&lng>113&&lng<154) return 'australia';
+  if(lat>34&&lat<71&&lng>-10&&lng<40) return 'mediterranean';
+  if(lat>-20&&lat<5&&lng>-74&&lng<-44) return 'amazon';
+  if(lat>50&&lat<80&&lng>60&&lng<180) return 'boreal';
+  if(lat>-35&&lat<15&&lng>-20&&lng<50) return 'africa_savanna';
+  if(lat>-10&&lat<20&&lng>95&&lng<145) return 'southeast_asia';
+  return 'usa'; // fallback
+}
+
+let ACTIVE_REGION='usa';
+let ACTIVE_BIOME='auto';
+
+// ── Biome Profiles ─────────────────────────────────────────────────────────
+const BIOME_PROFILES = {
+  auto: {label:'Auto-detect',icon:'🔍'},
+  temperate_forest: {
+    label:'Temperate Forest',icon:'🌲',
+    spottingMult:1.0, crownMult:1.0, emberPersistence:1.0,
+    windAlignmentMult:1.0, fineFuelMult:1.0, slopeSensitivity:1.0,
+    surfaceROSMult:1.0, smolderDuration:1.0, reignitionRisk:1.0,
+    desc:'Mixed conifer/hardwood forest. Moderate crown fire potential, Rothermel applies well.'
+  },
+  chaparral: {
+    label:'Chaparral / Shrubland',icon:'🌵',
+    spottingMult:1.4, crownMult:1.3, emberPersistence:1.2,
+    windAlignmentMult:1.5, fineFuelMult:1.35, slopeSensitivity:1.25,
+    surfaceROSMult:1.3, smolderDuration:0.8, reignitionRisk:1.0,
+    desc:'Dense shrubland. Wind-slope alignment critical. Fast ROS, high spotting.'
+  },
+  grassland_savanna: {
+    label:'Grassland / Savanna',icon:'🌾',
+    spottingMult:0.8, crownMult:0.2, emberPersistence:0.7,
+    windAlignmentMult:1.3, fineFuelMult:1.8, slopeSensitivity:0.9,
+    surfaceROSMult:1.6, smolderDuration:0.5, reignitionRisk:0.8,
+    desc:'Fine fuel dominated. Fastest surface spread. Grass curing critical.'
+  },
+  eucalyptus_forest: {
+    label:'Australian Eucalyptus',icon:'🦘',
+    spottingMult:2.2, crownMult:1.4, emberPersistence:1.6,
+    windAlignmentMult:1.4, fineFuelMult:1.5, slopeSensitivity:1.1,
+    surfaceROSMult:1.3, smolderDuration:1.2, reignitionRisk:1.3,
+    desc:'Extreme spotting from bark/leaf litter. Wind changes lethal. McArthur applies.'
+  },
+  boreal_forest: {
+    label:'Boreal / Taiga',icon:'❄',
+    spottingMult:1.0, crownMult:1.8, emberPersistence:1.4,
+    windAlignmentMult:1.0, fineFuelMult:0.9, slopeSensitivity:0.7,
+    surfaceROSMult:0.9, smolderDuration:3.0, reignitionRisk:2.0,
+    desc:'Crown fire dominated. Peat/duff smoldering persists weeks-months.'
+  },
+  peatland: {
+    label:'Peatland / Muskeg',icon:'💧',
+    spottingMult:0.6, crownMult:0.5, emberPersistence:0.9,
+    windAlignmentMult:0.8, fineFuelMult:1.2, slopeSensitivity:0.4,
+    surfaceROSMult:0.55, smolderDuration:5.0, reignitionRisk:2.5,
+    desc:'Subsurface smoldering dominant. Slow surface spread, extreme persistence. Water table critical.'
+  },
+  tropical_forest: {
+    label:'Tropical Forest Edge',icon:'🌴',
+    spottingMult:0.7, crownMult:0.4, emberPersistence:0.8,
+    windAlignmentMult:0.9, fineFuelMult:0.8, slopeSensitivity:0.9,
+    surfaceROSMult:0.7, smolderDuration:1.5, reignitionRisk:1.2,
+    desc:'Deforestation/drought edges. Understory drying. El Niño amplification.'
+  },
+  wui: {
+    label:'Wildland-Urban Interface',icon:'🏘',
+    spottingMult:1.5, crownMult:1.1, emberPersistence:1.8,
+    windAlignmentMult:1.2, fineFuelMult:1.1, slopeSensitivity:1.2,
+    surfaceROSMult:1.0, smolderDuration:1.3, reignitionRisk:1.4,
+    desc:'Structure exposure high. Ember ignition of structures. Complex suppression.'
+  },
+};
+
+function autoDetectBiome(lat, lng, region){
+  if(region==='australia') return 'eucalyptus_forest';
+  if(region==='amazon'||region==='southeast_asia') return 'tropical_forest';
+  if(region==='africa_savanna') return 'grassland_savanna';
+  if(region==='boreal') return 'boreal_forest';
+  if(region==='mediterranean') return 'chaparral';
+  return 'temperate_forest';
+}
+
+function getBiomeModifiers(){
+  const bId=ACTIVE_BIOME==='auto'?autoDetectBiome(
+    S.sim?.center?.lat??37,S.sim?.center?.lng??-119,ACTIVE_REGION):ACTIVE_BIOME;
+  return BIOME_PROFILES[bId]||BIOME_PROFILES.temperate_forest;
+}
+
+// ── Canadian Fire Weather Index (FWI) System ───────────────────────────────
+// Full FWI system: FFMC, DMC, DC, ISI, BUI, FWI
+function calcCanadianFWI(tempC, rhPct, windKmh, precipMm,
+  prevFFMC=85, prevDMC=6, prevDC=15){
+  // Fine Fuel Moisture Code (FFMC) — Rothermel 1972 / Van Wagner 1987
+  const mo=147.2*(101-prevFFMC)/(59.5+prevFFMC);
+  const rf=precipMm>0.5?precipMm-0.5:0;
+  let mr=mo;
+  if(rf>0){
+    if(mo>150) mr=mo+(42.5*rf*Math.exp(-100/(251-mo)))*(1-Math.exp(-6.93/rf));
+    else mr=mo+(42.5*rf*Math.exp(-100/(251-mo)))*(1-Math.exp(-6.93/rf));
+    mr=Math.min(mr,250);
+  }
+  const ed=0.942*Math.pow(rhPct,0.679)+11*Math.exp((rhPct-100)/10)+0.18*(21.1-tempC)*(1-Math.exp(-0.115*rhPct));
+  const ew=0.618*Math.pow(rhPct,0.753)+10*Math.exp((rhPct-100)/10)+0.18*(21.1-tempC)*(1-Math.exp(-0.115*rhPct));
+  let m=mr>ed?mr-(mr-ed)*Math.pow(10,-0.00309*(mr-ed)):
+       mr<ew?mr+(ew-mr)*Math.pow(10,-0.00418*(ew-mr)):mr;
+  m=Math.max(0,Math.min(m,250));
+  const ffmc=59.5*(250-m)/(147.2+m);
+
+  // Duff Moisture Code (DMC)
+  const Le=[6.5,7.5,9,12.8,13.9,13.9,12.4,10.9,9.4,8,7,6][new Date().getMonth()];
+  const dmc_precip=precipMm>1.5?
+    prevDMC+100*(0.92+Math.pow(precipMm-1.5,0.8)*0.0001)*(0.3+0.0023*prevDMC):
+    prevDMC; // simplified
+  const dmc_k=1.894*(tempC+1.1)*(100-rhPct)*Le*1e-6;
+  const dmc=Math.max(0,prevDMC+100*dmc_k);
+
+  // Drought Code (DC) — simplified
+  const Lf=[-1.6,-1.6,-1.6,0.9,3.8,5.8,6.4,5,2.4,0.4,-1.6,-1.6][new Date().getMonth()];
+  const dc=Math.max(0,prevDC+0.5*(0.36*(tempC+2.8)+Lf));
+
+  // Initial Spread Index (ISI) = f(FFMC, wind)
+  const fw=Math.exp(0.05039*windKmh);
+  const fm=147.2*(101-ffmc)/(59.5+ffmc);
+  const ff=91.9*Math.exp(-0.1386*fm)*(1+Math.pow(fm,5.31)/49300000);
+  const isi=0.208*fw*ff;
+
+  // Buildup Index (BUI)
+  const bui=dmc<=0.4*dc?0.8*dmc*dc/(dmc+0.4*dc):
+    dmc-(1-0.8*dc/(dmc+0.4*dc))*(0.92+Math.pow(0.0114*dmc,1.7));
+
+  // Fire Weather Index (FWI)
+  const bb=bui<=80?0.1*isi*(0.626*Math.pow(bui,0.809)+2):
+    0.1*isi*(1000/(25+108.64*Math.exp(-0.023*bui)));
+  const fwi=bb>1?Math.exp(2.72*Math.pow(0.434*Math.log(bb),0.647)):bb;
+
+  const fwiLabel=fwi<2?'Low':fwi<5?'Moderate':fwi<10?'High':fwi<20?'Very High':fwi<30?'Extreme':'Extreme+';
+  return{ffmc:+ffmc.toFixed(1),dmc:+dmc.toFixed(1),dc:+dc.toFixed(1),
+    isi:+isi.toFixed(1),bui:+bui.toFixed(1),fwi:+fwi.toFixed(1),fwiLabel};
+}
+
+// ── McArthur Forest Fire Danger Index (FFDI) — Australia ──────────────────
+// McArthur 1967 / Dowdy et al. 2010
+function calcMcArthurFFDI(tempC, rhPct, windKmh, droughtFactor=10){
+  // df = drought factor (0-10 from rainfall/drought conditions)
+  const df=Math.max(0,Math.min(10,droughtFactor));
+  // FFDI = 2 × e^(−0.45 + 0.987·ln(df) − 0.0345·rh + 0.0338·T + 0.0234·V)
+  const ffdi=2*Math.exp(-0.45+0.987*Math.log(Math.max(0.1,df))
+    -0.0345*rhPct+0.0338*tempC+0.0234*windKmh);
+  const rating=ffdi<12?'Low-Moderate':ffdi<24?'High':ffdi<50?'Very High':
+    ffdi<75?'Severe':ffdi<100?'Extreme':'Catastrophic';
+  const ratingColor=ffdi<12?'#4CAF50':ffdi<24?'#FFC107':ffdi<50?'#FF9800':
+    ffdi<75?'#F44336':ffdi<100?'#B71C1C':'#000';
+
+  // McArthur Grassland FDI (GFDI) — simplified McArthur Mk5
+  const curingFactor=Math.max(0,Math.min(1,(100-rhPct)/100)); // proxy for curing
+  const gfdi=Math.exp(-23.6+5.01*Math.log(Math.max(0.1,windKmh))
+    +0.0281*tempC-0.0561*rhPct+0.1378*curingFactor*100*0.1);
+
+  return{ffdi:+ffdi.toFixed(1),rating,ratingColor,
+    gfdi:+gfdi.toFixed(1),df,
+    rosMult:Math.max(0.8,Math.min(2.5,ffdi/25))};
+}
+
+// ── Global Source Registry ──────────────────────────────────────────────────
+const GLOBAL_SOURCES_REGISTRY = {
+  global: [
+    {id:'nasa_firms_viirs',label:'NASA FIRMS VIIRS',type:'active_fire',coverage:'Global',priority:1,url:'https://firms.modaps.eosdis.nasa.gov'},
+    {id:'modis_burned',label:'MODIS MCD64A1 Burned Area',type:'burn_scar',coverage:'Global 500m monthly',priority:1,url:'https://earthdata.nasa.gov'},
+    {id:'esa_worldcover',label:'ESA WorldCover',type:'landcover',coverage:'Global 10m',priority:1,url:'https://esa-worldcover.org'},
+    {id:'era5',label:'ECMWF ERA5',type:'weather_reanalysis',coverage:'Global hourly from 1940',priority:1,url:'https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5'},
+    {id:'spei_global',label:'SPEI Global Drought Monitor',type:'drought',coverage:'Global 0.5° from 1901',priority:1,url:'https://spei.csic.es'},
+    {id:'gfed',label:'Global Fire Emissions Database (GFEDv4)',type:'emissions',coverage:'Global 0.25° monthly',priority:2,url:'https://globalfiredata.org'},
+    {id:'copernicus_gwis',label:'Copernicus GWIS',type:'fire_events',coverage:'Global',priority:2,url:'https://gwis.jrc.ec.europa.eu'},
+  ],
+  usa: [
+    {id:'noaa_nws',label:'NOAA/NWS',type:'weather',priority:1,url:'https://api.weather.gov'},
+    {id:'nifc_wfigs',label:'NIFC/WFIGS',type:'perimeters',priority:1,url:'https://data-nifc.opendata.arcgis.com'},
+    {id:'usgs_3dep',label:'USGS 3DEP',type:'elevation',priority:1,url:'https://elevation.nationalmap.gov'},
+    {id:'mtbs',label:'MTBS Burn Severity',type:'historical_severity',priority:2,url:'https://www.mtbs.gov'},
+    {id:'landfire',label:'LANDFIRE 2022',type:'fuel_models',priority:1,url:'https://www.landfire.gov'},
+    {id:'usdm',label:'U.S. Drought Monitor',type:'drought',priority:1,url:'https://droughtmonitor.unl.edu'},
+    {id:'hrrr',label:'NOAA HRRR (3km)',type:'high_res_weather',priority:1,url:'https://rapidrefresh.noaa.gov/hrrr/'},
+    {id:'hrrr_smoke',label:'HRRR-Smoke',type:'smoke_forecast',priority:2,url:'https://rapidrefresh.noaa.gov/hrrr/'},
+  ],
+  canada: [
+    {id:'cwfis',label:'CWFIS',type:'fire_weather_fwi',priority:1,url:'https://cwfis.cfs.nrcan.gc.ca'},
+    {id:'natural_resources_canada',label:'Natural Resources Canada',type:'fire_data',priority:1,url:'https://natural-resources.canada.ca'},
+  ],
+  australia: [
+    {id:'bom_afdrs',label:'BOM / AFDRS',type:'fire_danger',priority:1,url:'https://www.bom.gov.au'},
+    {id:'afdrs',label:'Australian Fire Danger Rating System',type:'fbi',priority:1,url:'https://afdrs.com.au'},
+    {id:'geoscience_australia',label:'Geoscience Australia',type:'burn_area',priority:2,url:'https://www.ga.gov.au'},
+  ],
+  europe_mena: [
+    {id:'effis',label:'EFFIS / Copernicus',type:'fire_danger_history',priority:1,url:'https://effis.jrc.ec.europa.eu'},
+    {id:'copernicus_edo',label:'Copernicus EDO',type:'drought',priority:1,url:'https://edo.jrc.ec.europa.eu'},
+  ],
+  brazil_amazon: [
+    {id:'inpe_queimadas',label:'INPE Queimadas',type:'fire_foci_risk',priority:1,url:'https://queimadas.dgi.inpe.br'},
+    {id:'mapbiomas',label:'MapBiomas',type:'landcover_change',priority:2,url:'https://mapbiomas.org'},
+  ],
+};
+
+// ── Minimal HRR Holographic Encoder (client-side, 512-dim) ────────────────
+// Based on Plate 1995 HRR — Holographic Reduced Representations
+// In-browser: simplified version using seeded pseudorandom bipolar vectors
+// with superposition bundling and cosine similarity search
+const HRR_DIM = 512;
+const HRR_CACHE = new Map(); // seed → Float32Array
+
+function seededBipolar(seed){
+  if(HRR_CACHE.has(seed)) return HRR_CACHE.get(seed);
+  const v=new Float32Array(HRR_DIM);
+  // Simple LCG seeded hash
+  let s=0;
+  for(let i=0;i<seed.length;i++) s=(s*31+seed.charCodeAt(i))>>>0;
+  for(let i=0;i<HRR_DIM;i++){
+    s=(1664525*s+1013904223)>>>0;
+    v[i]=s&1?1:-1;
+  }
+  HRR_CACHE.set(seed,v); return v;
+}
+
+function hrrBind(a,b){
+  // Simplified binding: element-wise product (approximate circular convolution)
+  const out=new Float32Array(HRR_DIM);
+  for(let i=0;i<HRR_DIM;i++) out[i]=a[i]*b[i];
+  return out;
+}
+
+function hrrBundle(vecs){
+  const out=new Float32Array(HRR_DIM);
+  for(const v of vecs) for(let i=0;i<HRR_DIM;i++) out[i]+=v[i];
+  // Normalize
+  const mag=Math.sqrt(out.reduce((s,x)=>s+x*x,0))||1;
+  for(let i=0;i<HRR_DIM;i++) out[i]/=mag;
+  return out;
+}
+
+function hrrCosineSim(a,b){
+  let dot=0,ma=0,mb=0;
+  for(let i=0;i<HRR_DIM;i++){dot+=a[i]*b[i];ma+=a[i]*a[i];mb+=b[i]*b[i];}
+  return dot/(Math.sqrt(ma)*Math.sqrt(mb)||1);
+}
+
+function encodeScalarHRR(val, roleKey, min=0, max=100){
+  const norm=Math.max(0,Math.min(1,(val-min)/(max-min)));
+  const bucket=Math.floor(norm*20); // 20 quantization levels
+  return hrrBind(seededBipolar(`role:${roleKey}`),seededBipolar(`val:${roleKey}:${bucket}`));
+}
+
+function encodeFireObservation(obs){
+  const vecs=[
+    hrrBind(seededBipolar('role:source'), seededBipolar(`source:${obs.source||'unknown'}`)),
+    hrrBind(seededBipolar('role:region'), seededBipolar(`region:${obs.region||'usa'}`)),
+    hrrBind(seededBipolar('role:biome'),  seededBipolar(`biome:${obs.biome||'temperate_forest'}`)),
+    encodeScalarHRR(obs.frp||0,          'frp',    0, 1000),
+    encodeScalarHRR(obs.windSpd||0,      'wind',   0, 60),
+    encodeScalarHRR(obs.windDeg||0,      'winddir',0, 360),
+    encodeScalarHRR(obs.rhPct||50,       'rh',     0, 100),
+    encodeScalarHRR(obs.droughtClass||0, 'drought',0, 4),
+    encodeScalarHRR(obs.tempC||20,       'temp',   -20, 50),
+    encodeScalarHRR(obs.fwi||0,          'fwi',    0, 50),
+    encodeScalarHRR(obs.vpd||0,          'vpd',    0, 5),
+    hrrBind(seededBipolar('role:season'), seededBipolar(`season:${obs.season||'summer'}`)),
+    hrrBind(seededBipolar('role:fireContext'), seededBipolar(`ctx:${obs.fireContext||'wildfire'}`)),
+  ];
+  return hrrBundle(vecs);
+}
+
+// ── Holographic Memory Store ───────────────────────────────────────────────
+const HOLO_MEMORY = []; // [{obs, vector, meta}]
+
+function memoryStore(obs, meta={}){
+  const vec=encodeFireObservation(obs);
+  HOLO_MEMORY.push({obs,vec,meta});
+  return vec;
+}
+
+function memoryQuery(queryObs, topK=5){
+  const qv=encodeFireObservation(queryObs);
+  const scored=HOLO_MEMORY.map(r=>({...r,sim:hrrCosineSim(qv,r.vec)}));
+  return scored.sort((a,b)=>b.sim-a.sim).slice(0,topK);
+}
+
+// ── Seed memory with world fire analogs ────────────────────────────────────
+function seedWorldAnalogs(){
+  const analogs=[
+    {obs:{source:'bom',region:'australia',biome:'eucalyptus_forest',frp:450,windSpd:35,rhPct:12,droughtClass:3,tempC:42,fwi:28,vpd:4.2,season:'summer',fireContext:'bushfire'},
+     meta:{name:'SE Australia wind-shift event',year:2020,acres:5000000,note:'Extreme spotting, wind change, pyrocumulonimbus'}},
+    {obs:{source:'nifc',region:'usa',biome:'chaparral',frp:320,windSpd:40,rhPct:8,droughtClass:4,tempC:38,fwi:32,vpd:5.1,season:'fall',fireContext:'wildfire'},
+     meta:{name:'California Diablo wind fire',year:2020,acres:8800,note:'Extreme wind-driven, urban interface'}},
+    {obs:{source:'effis',region:'mediterranean',biome:'chaparral',frp:280,windSpd:45,rhPct:15,droughtClass:3,tempC:40,fwi:30,vpd:3.8,season:'summer',fireContext:'forest_fire'},
+     meta:{name:'Greece Mistral fire',year:2021,acres:60000,note:'Wind channeling in steep terrain, maquis fuels'}},
+    {obs:{source:'cwfis',region:'canada',biome:'boreal_forest',frp:600,windSpd:25,rhPct:20,droughtClass:3,tempC:35,fwi:40,vpd:3.5,season:'summer',fireContext:'wildland_fire'},
+     meta:{name:'Alberta boreal crown fire',year:2016,acres:1500000,note:'Fort McMurray fire — massive crown fire, urban threat'}},
+    {obs:{source:'inpe_queimadas',region:'amazon',biome:'tropical_forest',frp:200,windSpd:15,rhPct:35,droughtClass:2,tempC:32,fwi:15,vpd:2.1,season:'dry',fireContext:'agricultural_burn'},
+     meta:{name:'Amazon edge fire',year:2019,acres:2000000,note:'Deforestation-edge ignition, El Niño drought amplification'}},
+    {obs:{source:'firms_global',region:'africa_savanna',biome:'grassland_savanna',frp:150,windSpd:20,rhPct:25,droughtClass:1,tempC:34,fwi:12,vpd:2.8,season:'dry',fireContext:'savanna_burn'},
+     meta:{name:'East Africa savanna burn',year:2023,acres:400000,note:'Seasonal pastoral burn, grass curing >90%'}},
+    {obs:{source:'firms_global',region:'southeast_asia',biome:'peatland',frp:100,windSpd:10,rhPct:40,droughtClass:3,tempC:33,fwi:20,vpd:2.5,season:'dry',fireContext:'peat_fire'},
+     meta:{name:'Kalimantan peat fire',year:2019,acres:1200000,note:'Subsurface smoldering, extreme smoke/haze, reignition'}},
+    {obs:{source:'nifc',region:'usa',biome:'temperate_forest',frp:380,windSpd:28,rhPct:18,droughtClass:3,tempC:36,fwi:22,vpd:4.0,season:'summer',fireContext:'wildfire'},
+     meta:{name:'Western US multi-fire complex',year:2021,acres:2600000,note:'Record drought, multiple simultaneous fires, crowning'}},
+    {obs:{source:'cwfis',region:'boreal',biome:'boreal_forest',frp:520,windSpd:22,rhPct:22,droughtClass:2,tempC:32,fwi:35,vpd:3.2,season:'summer',fireContext:'wildland_fire'},
+     meta:{name:'Northwest Territories taiga fire',year:2023,acres:9000000,note:'Record boreal fire year, lightning ignition, peat engagement'}},
+    {obs:{source:'bom',region:'australia',biome:'grassland_savanna',frp:200,windSpd:30,rhPct:15,droughtClass:2,tempC:38,fwi:18,vpd:3.6,season:'spring',fireContext:'bushfire'},
+     meta:{name:'Queensland grassland fire',year:2023,acres:120000,note:'Grass curing 100%, early spring, fast spread'}},
+  ];
+  analogs.forEach(a=>memoryStore(a.obs,a.meta));
+}
+
+// ── HRRR / Weather Correlation Engine ────────────────────────────────────--
+// Client-side: correlates NWS forecast fields with FIRMS FRP trend
+// to identify dominant local drivers
+const CORR_HISTORY = []; // {step, windSpd, rh, temp, vpd, frpProxy}
+
+function recordCorrelationPoint(step, wx, frpProxy){
+  CORR_HISTORY.push({step,
+    windSpd:wx?.windSpd||S.windSpd,
+    rh:wx?.rhPct||50,
+    temp:wx?.tempC||25,
+    vpd:wx?.vpd||1,
+    haines:wx?.hainesRaw||3,
+    frpProxy,
+    timestamp:Date.now()
+  });
+  if(CORR_HISTORY.length>96) CORR_HISTORY.shift();
+}
+
+function pearsonCorr(xs, ys){
+  const n=xs.length; if(n<3) return 0;
+  const mx=xs.reduce((a,b)=>a+b,0)/n, my=ys.reduce((a,b)=>a+b,0)/n;
+  let num=0,dx=0,dy=0;
+  for(let i=0;i<n;i++){num+=(xs[i]-mx)*(ys[i]-my);dx+=(xs[i]-mx)**2;dy+=(ys[i]-my)**2;}
+  return num/(Math.sqrt(dx*dy)||1);
+}
+
+function computeDriverCorrelations(){
+  if(CORR_HISTORY.length<6) return null;
+  const fields=['windSpd','rh','temp','vpd','haines'];
+  const frps=CORR_HISTORY.map(r=>r.frpProxy);
+  const results=[];
+  for(const f of fields){
+    const vals=CORR_HISTORY.map(r=>r[f]);
+    const r=pearsonCorr(vals,frps);
+    // Lag correlation: shift by 1,3 steps
+    const rLag1=CORR_HISTORY.length>4?pearsonCorr(vals.slice(0,-1),frps.slice(1)):0;
+    const rLag3=CORR_HISTORY.length>6?pearsonCorr(vals.slice(0,-3),frps.slice(3)):0;
+    const bestLag=[0,1,3][[Math.abs(r),Math.abs(rLag1),Math.abs(rLag3)].indexOf(Math.max(Math.abs(r),Math.abs(rLag1),Math.abs(rLag3)))];
+    const strength=Math.abs(r)>0.6?'Strong':Math.abs(r)>0.35?'Moderate':'Weak';
+    results.push({field:f,r:r.toFixed(2),bestLagSteps:bestLag,strength,
+      label:{windSpd:'Wind Speed',rh:'Relative Humidity',temp:'Temperature',vpd:'VPD',haines:'Haines Index'}[f]
+    });
+  }
+  return results.sort((a,b)=>Math.abs(b.r)-Math.abs(a.r));
+}
+
+// ── Fire Context Classification ───────────────────────────────────────────
+const FIRE_CONTEXTS = [
+  {id:'unknown',label:'Unknown'},
+  {id:'wildfire',label:'Natural Wildfire'},
+  {id:'prescribed_burn',label:'Prescribed Burn'},
+  {id:'cultural_burn',label:'Cultural / Traditional Burn ⚠'},
+  {id:'agricultural_burn',label:'Agricultural Burn'},
+  {id:'industrial',label:'Industrial / Accidental'},
+  {id:'lightning',label:'Lightning Ignition'},
+];
+let ACTIVE_FIRE_CONTEXT='unknown';
+
+// ── Update World Panel UI ──────────────────────────────────────────────────
+function updateWorldPanel(){
+  const el=$('world-panel'); if(!el) return;
+  const rp=REGION_PROFILES[ACTIVE_REGION]||REGION_PROFILES.usa;
+  const bId=ACTIVE_BIOME==='auto'?autoDetectBiome(
+    S.sim?.center?.lat??37,S.sim?.center?.lng??-119,ACTIVE_REGION):ACTIVE_BIOME;
+  const bp=BIOME_PROFILES[bId]||BIOME_PROFILES.temperate_forest;
+  const gsrc=GLOBAL_SOURCES_REGISTRY;
+  const regionalSrc=[...(gsrc[ACTIVE_REGION]||[]),...(gsrc.global||[])].slice(0,6);
+
+  // McArthur/FWI contextual indices
+  let contextIdxHTML='';
+  const wx=wxCtx;
+  if(ACTIVE_REGION==='australia'&&wx){
+    const ffdi=calcMcArthurFFDI(wx.tempC||25,wx.rhPct||40,
+      (wx.gustKmh||S.windSpd*1.6),droughtCtx?.dm>=0?10-droughtCtx.dm*2:5);
+    contextIdxHTML=`<div style="background:var(--s2);border-radius:9px;padding:8px 10px;margin-bottom:8px;font-size:11px">
+      <div style="font-weight:700;margin-bottom:4px">🦘 McArthur Indices</div>
+      <div>FFDI: <b style="color:${ffdi.ratingColor}">${ffdi.ffdi} — ${ffdi.rating}</b></div>
+      <div>GFDI: <b>${ffdi.gfdi}</b> · Drought Factor: <b>${ffdi.df}</b></div>
+      <div style="font-size:9.5px;color:var(--f3)">ROS mult: ${ffdi.rosMult.toFixed(2)}×</div>
+    </div>`;
+  } else if(ACTIVE_REGION==='canada'&&wx){
+    const fwi=calcCanadianFWI(wx.tempC||20,wx.rhPct||40,S.windSpd*1.609,0);
+    contextIdxHTML=`<div style="background:var(--s2);border-radius:9px;padding:8px 10px;margin-bottom:8px;font-size:11px">
+      <div style="font-weight:700;margin-bottom:4px">🍁 Canadian FWI</div>
+      <div>FWI: <b>${fwi.fwi}</b> — ${fwi.fwiLabel} · ISI: <b>${fwi.isi}</b></div>
+      <div>FFMC: ${fwi.ffmc} · DMC: ${fwi.dmc} · DC: ${fwi.dc}</div>
+    </div>`;
+  }
+
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="font-size:32px">${rp.flag}</div>
+      <div>
+        <div style="font-size:14px;font-weight:800">${rp.label}</div>
+        <div style="font-size:10.5px;color:var(--f3)">${rp.agencies.join(' · ')}</div>
+      </div>
+    </div>
+
+    <div class="sh" style="margin-top:0">🌍 Region Terminology</div>
+    <div style="background:var(--s2);border-radius:9px;padding:8px 10px;margin-bottom:10px;font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">
+      <div>Fire: <b>${rp.terms.fire}</b></div>
+      <div>Warning: <b>${rp.terms.warning}</b></div>
+      <div>Incident: <b>${rp.terms.incident}</b></div>
+      <div>Containment: <b>${rp.terms.containment}</b></div>
+    </div>
+
+    <div class="sh">🌿 Biome Profile</div>
+    <div style="background:var(--s2);border-radius:9px;padding:8px 10px;margin-bottom:10px;font-size:11px">
+      <div style="font-weight:700;margin-bottom:4px">${bp.icon} ${bp.label}</div>
+      <div style="color:var(--f3);margin-bottom:8px;line-height:1.5">${bp.desc}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+        ${[['Spotting',bp.spottingMult],['Crown',bp.crownMult],['Surface ROS',bp.surfaceROSMult],
+           ['Wind Align',bp.windAlignmentMult],['Smolder',bp.smolderDuration],['Reignition',bp.reignitionRisk]]
+          .map(([l,v])=>`<div style="background:var(--s3);border-radius:6px;padding:4px 6px">
+            <div style="font-size:8px;color:var(--f4)">${l}</div>
+            <div style="font-size:12px;font-weight:800;font-family:'DM Mono',monospace;color:${v>1.5?'var(--err)':v>1.1?'var(--wrn)':'var(--ok)'}">${v.toFixed(1)}×</div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    ${contextIdxHTML}
+
+    <div class="sh">🔥 Fire Context</div>
+    <select id="fire-context-sel" onchange="ACTIVE_FIRE_CONTEXT=this.value;updateWorldPanel()" style="width:100%;padding:7px;background:var(--s2);border:1px solid var(--s3);border-radius:8px;color:var(--fg);font-size:11px;margin-bottom:10px">
+      ${FIRE_CONTEXTS.map(c=>`<option value="${c.id}"${c.id===ACTIVE_FIRE_CONTEXT?' selected':''}>${c.label}</option>`).join('')}
+    </select>
+    ${ACTIVE_FIRE_CONTEXT==='cultural_burn'?`<div style="padding:8px;background:#1A237E22;border:1px solid #3949AB55;border-radius:8px;font-size:10px;color:var(--inf);margin-bottom:10px;line-height:1.6">
+      ⚠ Traditional / Indigenous fire knowledge requires community authority, attribution, and CARE/TK label compliance. Use for context only. Do not encode without explicit permission.
+    </div>`:''}
+
+    <div class="sh">📡 Available Sources</div>
+    <div style="font-size:10px;margin-bottom:6px">
+      ${regionalSrc.map(s=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--s2)">
+        <div class="${SOURCES[s.id]?.status==='ok'?'sdot':SOURCES[s.id]?.status==='err'?'sdot e':'sdot dim'}"></div>
+        <div style="flex:1"><b>${s.label}</b> — ${s.type.replace(/_/g,' ')}</div>
+        <div style="color:var(--f4)">${s.coverage||s.region||''}</div>
+      </div>`).join('')}
+    </div>
+
+    <div class="sh">🏛 Traditional Fire Knowledge</div>
+    <div style="background:var(--s2);border-radius:9px;padding:8px 10px;font-size:10.5px;line-height:1.6;color:var(--f3)">
+      Traditional knowledge is stored as <b>governed context records only</b>.<br>
+      Community authority: <span style="color:var(--wrn)">Not granted</span><br>
+      CARE/TK compliance: Required<br>
+      Use in model: <b>Context only</b>
+      <div style="margin-top:6px">
+        <textarea id="tk-note" placeholder="Local knowledge note (not stored without explicit community permission)" style="width:100%;height:50px;background:var(--s3);border:1px solid var(--s2);border-radius:6px;color:var(--fg);font-size:10px;padding:5px;resize:none"></textarea>
+      </div>
+    </div>`;
+}
+
+// ── Update Memory Panel ────────────────────────────────────────────────────
+function updateMemoryPanel(){
+  const el=$('memory-panel'); if(!el) return;
+
+  // Build query from current state
+  const queryObs={
+    source:'current',
+    region:ACTIVE_REGION,
+    biome:ACTIVE_BIOME==='auto'?autoDetectBiome(
+      S.sim?.center?.lat??37,S.sim?.center?.lng??-119,ACTIVE_REGION):ACTIVE_BIOME,
+    frp:HS.points.length?HS.points.reduce((s,p)=>s+p.frp,0)/HS.points.length:0,
+    windSpd:S.windSpd,
+    windDeg:S.windDeg,
+    rhPct:wxCtx?.rhPct??50,
+    droughtClass:droughtCtx?.dm??0,
+    tempC:wxCtx?.tempC??25,
+    fwi:wxCtx?.hainesRaw??3,
+    vpd:wxCtx?.vpd??1,
+    season:getCurrentSeason(),
+    fireContext:ACTIVE_FIRE_CONTEXT,
+  };
+  const analogs=memoryQuery(queryObs,5);
+  const drivers=computeDriverCorrelations();
+
+  // Analog cards
+  const analogHTML=analogs.length?analogs.map(a=>`
+    <div style="background:var(--s2);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <div style="font-weight:700;font-size:11px">${a.meta.name||'Unknown'} (${a.meta.year||'?'})</div>
+          <div style="font-size:9.5px;color:var(--f3);line-height:1.5">${a.meta.note||''}</div>
+          <div style="font-size:9px;color:var(--f4)">${a.obs.region} · ${a.obs.biome?.replace(/_/g,' ')}</div>
+        </div>
+        <div style="text-align:center;min-width:42px">
+          <div style="font-size:14px;font-weight:900;font-family:'DM Mono',monospace;color:${a.sim>0.8?'var(--ok)':a.sim>0.6?'var(--inf)':'var(--wrn)'}">${Math.round(a.sim*100)}%</div>
+          <div style="font-size:8px;color:var(--f4)">match</div>
+        </div>
+      </div>
+    </div>`).join(''):'<div style="color:var(--f4);font-size:11px">No analogs yet. Run projection first.</div>';
+
+  // Driver correlations
+  const driverHTML=drivers?drivers.slice(0,5).map(d=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--s2);font-size:10.5px">
+      <div style="flex:1">${d.label}</div>
+      <div style="color:${d.strength==='Strong'?'var(--err)':d.strength==='Moderate'?'var(--wrn)':'var(--f3)'}">
+        <b>${d.strength}</b></div>
+      <div style="font-family:'DM Mono',monospace;font-size:9.5px;color:var(--f4)">${d.r}</div>
+      ${d.bestLagSteps?`<div style="font-size:9px;color:var(--f4)">lag ${d.bestLagSteps*5}min</div>`:''}
+    </div>`).join(''):'<div style="color:var(--f4);font-size:11px">Insufficient correlation data. Fire must be running.</div>';
+
+  el.innerHTML=`
+    <div class="sh" style="margin-top:0">🔍 Holographic Match</div>
+    <div style="font-size:9.5px;color:var(--f4);margin-bottom:8px;font-family:'DM Mono',monospace">
+      Query: ${queryObs.region} · ${queryObs.biome?.replace(/_/g,' ')} · wind ${Math.round(queryObs.windSpd)}mph · RH ${Math.round(queryObs.rhPct)}% · drought D${Math.max(0,queryObs.droughtClass)}
+    </div>
+    ${analogHTML}
+
+    <div class="sh" style="margin-top:12px">⚡ Weather-Fire Correlation</div>
+    <div style="font-size:9.5px;color:var(--f4);margin-bottom:6px">${CORR_HISTORY.length} correlation points collected</div>
+    ${driverHTML}
+
+    <div class="sh" style="margin-top:12px">🧬 Vector Encoding</div>
+    <div style="padding:7px 10px;background:var(--s2);border-radius:8px;font-size:9.5px;color:var(--f3);font-family:'DM Mono',monospace;line-height:1.7">
+      Engine: HRR (Plate 1995) · ${HRR_DIM}D bipolar vectors<br>
+      Binding: element-wise product<br>
+      Bundling: superposition + L2 normalize<br>
+      Retrieval: cosine similarity<br>
+      Store: ${HOLO_MEMORY.length} records
+    </div>
+
+    <div class="sh" style="margin-top:12px">🌐 Global Coverage</div>
+    <div style="font-size:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px">
+      ${Object.keys(GLOBAL_SOURCES_REGISTRY).map(region=>
+        `<div style="padding:4px 6px;background:var(--s2);border-radius:6px">
+          <b style="font-size:9px">${region.toUpperCase()}</b>
+          <div style="font-size:8.5px;color:var(--f4)">${GLOBAL_SOURCES_REGISTRY[region].length} sources</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── Update Evidence Panel ──────────────────────────────────────────────────
+function updateEvidencePanel(){
+  const el=$('evidence-panel'); if(!el) return;
+  const drivers=computeDriverCorrelations();
+  const biome=getBiomeModifiers();
+  const conf=computeConfidence();
+  const analogs=computeAnalogs();
+  const hs=HS.points;
+
+  // Observed fire signals
+  const meanFRP=hs.length?Math.round(hs.reduce((s,p)=>s+p.frp,0)/hs.length):0;
+  const highConf=hs.filter(p=>p.conf==='h').length;
+  const perimStep=S.sim?.snapshots?S.sim.snapshots[S.step]:null;
+  const burnCount=perimStep?[...perimStep].flat().filter(c=>c?.fire!==F.NONE).length:0;
+  const estimatedAcres=Math.round(burnCount*(KM*1000/G)**2/4047);
+
+  // Explanation string
+  const topDriver=drivers?.[0];
+  let explanation='';
+  if(topDriver?.strength==='Strong'){
+    const driverName={windSpd:'wind-driven',rh:'low-RH driven',temp:'heat-driven',
+      vpd:'VPD-driven',haines:'atmospheric instability-driven'}[topDriver.field]||'driven';
+    explanation=`This simulation appears primarily ${driverName} (r=${topDriver.r}). `;
+    if(droughtCtx?.dm>=2) explanation+=`D${droughtCtx.dm} drought amplifies ignition probability. `;
+    if(wxCtx?.hainesRaw>=5) explanation+=`Haines ${wxCtx.hainesRaw} indicates elevated fire weather potential. `;
+  } else {
+    explanation='Insufficient data for driver explanation. Run a projection with live weather.';
+  }
+
+  el.innerHTML=`
+    <div class="sh" style="margin-top:0">🛰 Observed Fire Signals</div>
+    <div style="background:var(--s2);border-radius:9px;padding:8px 10px;margin-bottom:10px;font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:5px">
+      <div><span style="color:var(--f3)">IR hotspots:</span> <b>${hs.length}</b></div>
+      <div><span style="color:var(--f3)">Mean FRP:</span> <b>${meanFRP} MW</b></div>
+      <div><span style="color:var(--f3)">High conf:</span> <b>${highConf}</b></div>
+      <div><span style="color:var(--f3)">Burned area:</span> <b>~${estimatedAcres.toLocaleString()} ac</b></div>
+    </div>
+
+    <div class="sh">⚡ Dominant Drivers</div>
+    <div style="margin-bottom:10px">
+      ${drivers?drivers.slice(0,5).map(d=>{
+        const bar=Math.max(5,Math.round(Math.abs(d.r)*100));
+        const col=d.strength==='Strong'?'var(--err)':d.strength==='Moderate'?'var(--wrn)':'var(--inf)';
+        return`<div style="margin-bottom:5px">
+          <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:2px">
+            <span>${d.label}</span><span style="color:${col}">${d.strength} (r=${d.r})</span>
+          </div>
+          <div style="background:var(--s2);border-radius:4px;height:4px">
+            <div style="width:${bar}%;background:${col};height:4px;border-radius:4px"></div>
+          </div>
+        </div>`;}).join(''):'<div style="color:var(--f4);font-size:11px">No correlation data yet.</div>'}
+    </div>
+
+    <div class="sh">🌿 Biome Modifiers Active</div>
+    <div style="background:var(--s2);border-radius:9px;padding:8px 10px;margin-bottom:10px;font-size:10.5px">
+      <div style="font-weight:700;margin-bottom:4px">${biome.icon||''} ${biome.label||'Auto'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;color:var(--f3)">
+        <div>Spotting: <b style="color:var(--fg)">${biome.spottingMult?.toFixed(1)||'1.0'}×</b></div>
+        <div>Crown: <b style="color:var(--fg)">${biome.crownMult?.toFixed(1)||'1.0'}×</b></div>
+        <div>Surface ROS: <b style="color:var(--fg)">${biome.surfaceROSMult?.toFixed(1)||'1.0'}×</b></div>
+        <div>Wind align: <b style="color:var(--fg)">${biome.windAlignmentMult?.toFixed(1)||'1.0'}×</b></div>
+      </div>
+    </div>
+
+    <div class="sh">📚 Historical Agreement</div>
+    <div style="margin-bottom:10px">
+      ${analogs.length?analogs.slice(0,3).map(a=>`
+        <div style="font-size:10.5px;padding:4px 0;border-bottom:1px solid var(--s2);display:flex;justify-content:space-between">
+          <span>${a.name||'Unknown'} (${a.yr})</span>
+          <span style="color:var(--inf);font-family:'DM Mono',monospace">${Math.round(a.score*100)}%</span>
+        </div>`).join(''):'<div style="color:var(--f4);font-size:11px">Run projection for analogs.</div>'}
+    </div>
+
+    <div class="sh">💡 Explain This Run</div>
+    <div style="padding:10px;background:var(--s2);border-radius:9px;font-size:11px;line-height:1.6;color:var(--fg)">
+      ${explanation}
+    </div>
+
+    <div style="margin-top:10px;padding:8px;background:var(--s2);border-radius:9px;font-size:10.5px;line-height:1.5">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-weight:700">Model Confidence</span>
+        <span style="color:${conf.color};font-weight:900;font-family:'DM Mono',monospace">${conf.score}%</span>
+      </div>
+      ${conf.reasons.slice(0,3).map(r=>`<div style="color:var(--f3)">• ${r}</div>`).join('')}
+    </div>`;
+}
+
+// ── Utility: current season ────────────────────────────────────────────────
+function getCurrentSeason(){
+  const m=new Date().getMonth();
+  const lat=S.sim?.center?.lat??37;
+  if(lat>0) return m>=2&&m<=4?'spring':m>=5&&m<=7?'summer':m>=8&&m<=10?'fall':'winter';
+  return m>=2&&m<=4?'fall':m>=5&&m<=7?'winter':m>=8&&m<=10?'spring':'summer'; // southern hemisphere
+}
+
+// ── Apply biome modifiers to spread probability ────────────────────────────
+function getBiomeROSMult(){
+  const b=getBiomeModifiers();
+  return b.surfaceROSMult||1;
+}
+
+function getBiomeSpottingMult(){
+  const b=getBiomeModifiers();
+  return b.spottingMult||1;
+}
+
+function getBiomeCrownMult(){
+  const b=getBiomeModifiers();
+  return b.crownMult||1;
+}
+
+// Record FRP proxy for correlation each sim step
+function trackSimStep(step){
+  const snap=S.sim?.snapshots?.[step];
+  if(!snap) return;
+  const flameCells=snap.flat().filter(c=>c?.fire===F.FLAME).length;
+  const frpProxy=flameCells*TP[T.FOREST].ros*10; // proxy
+  recordCorrelationPoint(step, wxCtx, frpProxy);
+}
+
+
 window.addEventListener('load',()=>{boot('Binding UI…');bindUI();bindModelSelector();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
 window.addEventListener('resize',()=>{S.map?.invalidateSize();sizeOv();draw();});
 </script>
