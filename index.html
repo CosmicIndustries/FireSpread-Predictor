@@ -401,6 +401,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{
 
   <!-- WEATHER sub-panel -->
   <div id="rst-weather" style="display:none">
+    <div class="nws" id="nws-card"><div id="wcard" style="display:contents">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--f4);margin-bottom:6px">
+        <b id="wcard-src">NWS</b><span id="nwsl"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;text-align:center">
+        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-s">—</div><div style="font-size:9px;color:var(--f4)">MPH</div></div>
+        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-d">—</div><div style="font-size:9px;color:var(--f4)">DIR</div></div>
+        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-t">—</div><div style="font-size:9px;color:var(--f4)">°F</div></div>
+        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-h">—</div><div style="font-size:9px;color:var(--f4)">RH%</div></div>
+      </div>
+    </div>
     <div class="nws" id="nws-card2"></div>
     <div id="fire-weather-detail" style="font-size:11px;color:var(--f3);padding:8px;background:var(--s2);border-radius:8px">
       <div id="fw-wind">Wind: —</div>
@@ -1095,7 +1106,7 @@ async function fetchNWS(lat,lng){
     const fd=await fr.json();const p=fd?.properties?.periods?.[0];if(!p)throw new Error('no period');
     const spd=parseWS(p.windSpeed),dir=CDEG[p.windDirection]??S.windDeg,tmp=p.temperature,hum=p.relativeHumidity?.value;
     S.lastRH=hum; S.lastTemp=tmp;
-    $('wcard').style.display='block';$('wcard-src').textContent=d.properties.gridId||'NWS';
+    const _wc=$('wcard')||$('nws-card'); if(_wc) _wc.style.display='block';$('wcard-src').textContent=d.properties.gridId||'NWS';
     $('ww-s').textContent=spd;$('ww-d').textContent=p.windDirection||'—';$('ww-t').textContent=tmp??'—';$('ww-h').textContent=hum!=null?Math.round(hum):'—';
     $('nwsl').textContent=`NWS Auto · ${d.properties.gridId||''}`;$('s4').className='sdot';
     S.windSpd=spd;S.windDeg=dir;
@@ -1321,8 +1332,8 @@ function bindUI(){
     if(tab.dataset.t==='risk') setModeBadge('📊 Analyze',2000);
     else if(tab.dataset.t==='proj') setModeBadge('🔥 Run Mode',2000);
   });});
-  $('mb-single').addEventListener('click',()=>{S.mode='single';S.probGrid=null;$('mb-single').classList.add('on');$('mb-prob').classList.remove('on','prob');$('prob-leg').style.display='none';chip('c-mode','📊 Single run','dim');if(S.sim)rerun();});
-  $('mb-prob').addEventListener('click',()=>{S.mode='prob';$('mb-prob').classList.add('on','prob');$('mb-single').classList.remove('on');$('prob-leg').style.display='block';chip('c-mode','📊 Ensemble ×15','inf');if(S.sim)rerun();});
+  $('mb-single')?.addEventListener('click',()=>{S.mode='single';S.probGrid=null;$('mb-single')?.classList.add('on');$('mb-prob')?.classList.remove('on','prob');$('prob-leg').style.display='none';chip('c-mode','📊 Single run','dim');if(S.sim)rerun();});
+  $('mb-prob')?.addEventListener('click',()=>{S.mode='prob';$('mb-prob')?.classList.add('on','prob');$('mb-single')?.classList.remove('on');$('prob-leg').style.display='block';chip('c-mode','📊 Ensemble ×15','inf');if(S.sim)rerun();});
   bindSlider('sl-wd','wdf','wdt','wdv',v=>`${v}°`,v=>{S.windDeg=v;drawCompass(v);if(S.sim)rerun();});
   bindSlider('sl-ws','wsf','wst','wsv',v=>`${v} mph`,v=>{S.windSpd=v;if(S.sim)rerun();});
   bindSlider('sl-mo','mof','mot','mov',v=>`${v}%`,v=>{S.moist=v/100;if(S.sim)rerun();});
@@ -1412,7 +1423,7 @@ function bindUI(){
 
   $('draw-line-btn')?.addEventListener('click',()=>enableDraw('line'));
   $('draw-poly-btn')?.addEventListener('click',()=>enableDraw('poly'));
-  $('draw-clear-btn')?.addEventListener('click',clearDraw);
+  $('draw-clear-btn')?.addEventListener('click',clearDraw);$('clear-btn')?.addEventListener('click',clearDraw);
   $('risk-btn')?.addEventListener('click',computeRiskScore);
   $('e-kml')?.addEventListener('click',exportKML);
   // Enable risk button when sim is ready
@@ -1447,7 +1458,7 @@ function bindUI(){
       case 'ArrowRight': e.preventDefault(); if(!S.sim)break; stopPlay(); S.step=Math.min(STP-1,S.step+1); updateUI(); draw(); break;
       case 'KeyR': if(S.sim){stopPlay();S.step=0;updateUI();draw();} break;
       case 'KeyD': enableDraw('line'); break;
-      case 'KeyP': $('mb-prob').click(); break;
+      case 'KeyP': $('mb-prob')?.click(); break;
       case 'Digit1': document.querySelector('[data-ms="240"]')?.click(); break;
       case 'Digit2': document.querySelector('[data-ms="120"]')?.click(); break;
       case 'Digit3': document.querySelector('[data-ms="60"]')?.click(); break;
@@ -1506,7 +1517,7 @@ async function fetchNWSSequence(lat,lng){
     }
 
     // Update UI
-    $('wcard').style.display='block';
+    const _wc=$('wcard')||$('nws-card'); if(_wc) _wc.style.display='block';
     $('wcard-src').textContent=pd.properties.gridId||'NWS';
     $('ww-s').textContent=spd0; $('ww-d').textContent=current.windDirection||'—';
     $('ww-t').textContent=tmp??'—'; $('ww-h').textContent=hum!=null?Math.round(hum):'—';
