@@ -402,8 +402,8 @@ button{font-family:inherit;cursor:pointer}
     <div class="trow" data-disp="smoke"><span>💨 Smoke plume</span><div class="tog on" id="tog-smoke2"><div class="kn"></div></div></div>
     <div class="trow" data-disp="hazard"><span>⚠ Terrain hazard flags</span><div class="tog on" id="tog-hazard"><div class="kn"></div></div></div>
     <div class="trow" data-disp="windrose"><span>🌬 Wind rose overlay</span><div class="tog on" id="tog-windrose"><div class="kn"></div></div></div>
-    <div class="trow" data-disp="movvec"><span>➡ Fire movement vectors</span><div class="tog on" id="tog-movvec"><div class="kn"></div></div></div>
-    <div class="trow" data-disp="firestate"><span>🔥 Current vs projected tint</span><div class="tog on" id="tog-firestate"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="movvec"><span>➡ Fire movement vectors</span><div class="tog" id="tog-movvec"><div class="kn"></div></div></div>
+    <div class="trow" data-disp="firestate"><span>🔥 Current vs projected tint</span><div class="tog" id="tog-firestate"><div class="kn"></div></div></div>
   </div>
 
   <!-- DATA -->
@@ -503,6 +503,13 @@ button{font-family:inherit;cursor:pointer}
   <div style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace" id="zpct">0%</div>
   <div style="font-size:10px;color:var(--f3);font-family:'DM Mono',monospace;margin-top:3px" id="zac">~0 acres</div><div style="font-size:9px;color:var(--f4);font-family:'DM Mono',monospace;margin-top:2px" id="zres">80×80 · 50m/cell</div>
 </div>
+<div id="zoom-ctl" style="position:absolute;top:14px;right:14px;z-index:700;display:flex;flex-direction:column;gap:3px">
+  <button id="zf-in"  onclick="if(S.map){S.map.zoomIn();document.getElementById('zf-lbl').textContent=S.map.getZoom();}" title="Zoom in"
+    style="width:32px;height:32px;background:var(--surf,#09141F);border:1px solid var(--s3,#1E3050);border-radius:8px 8px 0 0;color:var(--fg,#E8EAED);font-size:18px;font-weight:300;cursor:pointer;line-height:1">+</button>
+  <div id="zf-lbl" style="background:var(--surf,#09141F);border:1px solid var(--s3,#1E3050);border-top:none;border-bottom:none;text-align:center;font-size:9.5px;font-family:'DM Mono',monospace;color:var(--f3,#90A4AE);padding:2px 0;line-height:1.6">5</div>
+  <button id="zf-out" onclick="if(S.map){S.map.zoomOut();document.getElementById('zf-lbl').textContent=S.map.getZoom();}" title="Zoom out"
+    style="width:32px;height:32px;background:var(--surf,#09141F);border:1px solid var(--s3,#1E3050);border-radius:0 0 8px 8px;color:var(--fg,#E8EAED);font-size:18px;font-weight:300;cursor:pointer;line-height:1">−</button>
+</div>
 <div class="mcrd" id="windrose-panel" style="top:80px;right:14px;padding:10px;display:none;z-index:600">
   <div style="font-size:8.5px;color:var(--f4);letter-spacing:1px;margin-bottom:6px;font-family:'DM Mono',monospace">WIND FORECAST (8H)</div>
   <svg id="windrose-svg" width="120" height="120" viewBox="-60 -60 120 120"></svg>
@@ -599,7 +606,7 @@ const NIFC_P2='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/service
 const NIFC_I='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0';
 const NIFC_R='https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/PublicView_RAWS/FeatureServer/1';
 
-const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,windSteps:null,modelData:null,
+const S={sim:null,step:0,playing:false,playMs:120,playTimer:null,ft:0,windSteps:null,modelData:null,showMovVectors:false,showFireState:false,
   windDeg:225,windSpd:15,moist:.10,mode:'single',probGrid:null,ignitions:[],
   showPerim:true,showChar:true,showZone:true,showSmoke:true,showGchart:true,
   vis:{perims:true,incs:true,raws:false,modis:false,viirs_snpp:false,viirs_noaa20:false,adsb:false},
@@ -1001,7 +1008,7 @@ function initMap(){
   S.map.on('move zoom resize',()=>{sizeOv();draw();});
   S.map.on('moveend zoomend',()=>draw());
   setupLayers();boot('Connecting to NIFC…');
-  S.map.on('zoomend',()=>{ const zl=$('z-lbl'); if(zl) zl.textContent=S.map.getZoom(); });
+  S.map.on('zoomend',()=>{ const zl=$('z-lbl'); if(zl) zl.textContent=S.map.getZoom(); const zf=$('zf-lbl'); if(zf) zf.textContent=S.map.getZoom(); });
   S.map.on('click', onSuppClick);
 }
 
@@ -4071,24 +4078,27 @@ function drawMovementVectors(ctx, tl, cW, cH){
 // Draw "current state" vs "projection" tint overlay
 // Current state (seeded from perimeter) = neutral; projection ahead = brighter
 function drawFireStateOverlay(ctx, tl, br, cW, cH){
-  if(!S.sim?.snapshots||!S.sim.params?.initGrid) return;
-  const snap=S.sim.snapshots[S.step];
+  // Draw the T=0 fire perimeter edge as a dashed white line
+  // (shows where fire was when simulation started vs projected growth)
+  if(!S.sim?.snapshots||!S.sim.params?.initGrid||!S.showFireState) return;
   const init=S.sim.params.initGrid;
   ctx.save();
+  ctx.strokeStyle='rgba(255,255,200,0.55)';
+  ctx.lineWidth=1.5;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  // Only trace the OUTER EDGE of the initGrid fire area (not every interior cell)
   for(let y=0;y<G;y++) for(let x=0;x<G;x++){
-    const cur=snap[y][x];
-    const was=init[y][x];
-    if(cur.fire===F.NONE) continue;
+    if(init[y][x].fire===F.NONE) continue;
     const px=tl.x+x*cW, py=tl.y+y*cH;
-    // Was already burning when sim started = current state (grey-amber tint)
-    if(was.fire!==F.NONE){
-      // Already burned at T=0 — show as grey outline
-      ctx.strokeStyle='rgba(200,160,60,0.4)';
-      ctx.lineWidth=0.5;
-      ctx.strokeRect(px,py,cW,cH);
-    }
-    // Otherwise projected new fire = normal rendering handles it
+    // Draw edge segment only where adjacent cell is unburned or out of bounds
+    if(x===0||init[y][x-1].fire===F.NONE){ctx.moveTo(px,py);ctx.lineTo(px,py+cH);}
+    if(x===G-1||init[y][x+1].fire===F.NONE){ctx.moveTo(px+cW,py);ctx.lineTo(px+cW,py+cH);}
+    if(y===0||init[y-1]?.[x].fire===F.NONE){ctx.moveTo(px,py);ctx.lineTo(px+cW,py);}
+    if(y===G-1||init[y+1]?.[x].fire===F.NONE){ctx.moveTo(px,py+cH);ctx.lineTo(px+cW,py+cH);}
   }
+  ctx.stroke();
+  ctx.setLineDash([]);
   ctx.restore();
 }
 
