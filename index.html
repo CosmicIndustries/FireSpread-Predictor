@@ -351,7 +351,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{
   <div id="rst-setup">
     <!-- Model group: Production -->
     <div class="model-group-label">⚡ Production</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px" id="model-grid">
       <button class="mbtn on" data-model="fast" style="padding:8px 4px;font-size:10.5px">⚡ Fast Tactical<br><span style="font-size:8px;opacity:.7">Huygens+Rothermel</span></button>
       <button class="mbtn research" data-model="cell2fire" style="padding:8px 4px;font-size:10.5px">🎲 Cell2Fire<br><span style="font-size:8px;opacity:.7">100× Monte Carlo</span></button>
     </div>
@@ -401,15 +401,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{
 
   <!-- WEATHER sub-panel -->
   <div id="rst-weather" style="display:none">
-    <div class="nws" id="nws-card"><div id="wcard" style="display:contents">
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--f4);margin-bottom:6px">
-        <b id="wcard-src">NWS</b><span id="nwsl"></span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;text-align:center">
-        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-s">—</div><div style="font-size:9px;color:var(--f4)">MPH</div></div>
-        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-d">—</div><div style="font-size:9px;color:var(--f4)">DIR</div></div>
-        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-t">—</div><div style="font-size:9px;color:var(--f4)">°F</div></div>
-        <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-h">—</div><div style="font-size:9px;color:var(--f4)">RH%</div></div>
+    <div class="nws" id="nws-card" style="display:none">
+      <div id="wcard" style="display:contents">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--f4);margin-bottom:6px">
+          <b id="wcard-src">NWS</b><span id="nwsl"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;text-align:center">
+          <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-s">—</div><div style="font-size:9px;color:var(--f4)">MPH</div></div>
+          <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-d">—</div><div style="font-size:9px;color:var(--f4)">DIR</div></div>
+          <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-t">—</div><div style="font-size:9px;color:var(--f4)">°F</div></div>
+          <div><div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace" id="ww-h">—</div><div style="font-size:9px;color:var(--f4)">RH%</div></div>
+        </div>
       </div>
     </div>
     <div class="nws" id="nws-card2"></div>
@@ -813,6 +815,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{
   <div id="zf-lbl" style="background:var(--surf,#09141F);border:1px solid var(--s3,#1E3050);border-top:none;border-bottom:none;text-align:center;font-size:9.5px;font-family:'DM Mono',monospace;color:var(--f3,#90A4AE);padding:2px 0;line-height:1.6">5</div>
   <button id="zf-out" onclick="if(S.map){S.map.zoomOut();document.getElementById('zf-lbl').textContent=S.map.getZoom();}" title="Zoom out"
     style="width:32px;height:32px;background:var(--surf,#09141F);border:1px solid var(--s3,#1E3050);border-radius:0 0 8px 8px;color:var(--fg,#E8EAED);font-size:18px;font-weight:300;cursor:pointer;line-height:1">−</button>
+</div>
 </div>
 <div class="mcrd" id="windrose-panel" style="top:80px;right:14px;padding:10px;display:none;z-index:600">
   <div style="font-size:8.5px;color:var(--f4);letter-spacing:1px;margin-bottom:6px;font-family:'DM Mono',monospace">WIND FORECAST (8H)</div>
@@ -6047,7 +6050,26 @@ function patchShell(){
   }
 }
 
-window.addEventListener('load',()=>{boot('Binding UI…');bindUI();bindModelSelector();boot('Loading map…');initMap();setTimeout(()=>{$('boot').classList.add('gone');restoreURL();},1400);});
+window.addEventListener('load',()=>{
+  boot('Binding UI…');
+  bindUI();
+  bindModelSelector();
+  // Shell refactor inits
+  if(typeof initSubTabs==='function')     initSubTabs();
+  if(typeof wireRunBtn==='function')      wireRunBtn();
+  if(typeof wireToolRail==='function')    wireToolRail();
+  if(typeof initMobileSheet==='function') initMobileSheet();
+  if(typeof wireDiurnalToggle==='function') wireDiurnalToggle();
+  if(typeof patchShell==='function')      patchShell();
+  // World engine
+  if(typeof seedWorldAnalogs==='function') seedWorldAnalogs();
+  if(typeof updateWorldPanel==='function') updateWorldPanel();
+  // PWA
+  if(typeof registerSW==='function')      registerSW();
+  boot('Loading map…');
+  initMap();
+  setTimeout(()=>{ $('boot').classList.add('gone'); restoreURL(); }, 1400);
+});
 window.addEventListener('resize',()=>{S.map?.invalidateSize();sizeOv();draw();});
 </script>
 </body>
